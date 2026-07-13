@@ -8,3 +8,4 @@ dist
 frontend/.next
 frontend/node_modules
 backend/.venv
+.env

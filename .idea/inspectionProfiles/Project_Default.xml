@@ -1,0 +1,32 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="Eslint" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="beautifulsoup4" />
+          <option value="httpx" />
+          <option value="markdown" />
+          <option value="neo4j" />
+          <option value="numpy" />
+          <option value="openpyxl" />
+          <option value="paddleocr" />
+          <option value="paddlepaddle" />
+          <option value="pandas" />
+          <option value="pydantic" />
+          <option value="pydantic-settings" />
+          <option value="pymupdf" />
+          <option value="python-docx" />
+          <option value="python-dotenv" />
+          <option value="requests" />
+          <option value="sentence-transformers" />
+          <option value="structlog" />
+          <option value="tenacity" />
+          <option value="torch" />
+          <option value="tqdm" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>

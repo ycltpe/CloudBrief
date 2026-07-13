@@ -1,0 +1,36 @@
+-- 2026_07_13_add_query_logs.sql
+-- Phase 3 2 周 MVP：真实用户查询日志
+
+CREATE TABLE IF NOT EXISTS query_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    log_hash CHAR(64) NOT NULL UNIQUE,
+    user_hash CHAR(64) NULL,
+    received_at DATETIME NOT NULL,
+    original_question TEXT NOT NULL,
+    rewritten_question TEXT NULL,
+    kb_id VARCHAR(64) NULL,
+    question_type VARCHAR(32) NULL,
+    config_snapshot TEXT NULL,
+    retrieval_adapter VARCHAR(32) NULL,
+    is_fallback BOOLEAN DEFAULT FALSE,
+    max_score FLOAT NULL,
+    retrieved_chunks TEXT NULL,
+    answer TEXT NULL,
+    citations_json TEXT NULL,
+    is_refusal BOOLEAN DEFAULT FALSE,
+    is_stale BOOLEAN DEFAULT FALSE,
+    graphrag_enabled BOOLEAN DEFAULT FALSE,
+    graphrag_used BOOLEAN DEFAULT FALSE,
+    latency_ms_rewrite INT NULL,
+    latency_ms_retrieve INT NULL,
+    latency_ms_generate INT NULL,
+    latency_ms_total INT NULL,
+    user_feedback VARCHAR(16) NULL,
+    user_feedback_note TEXT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_received_at (received_at),
+    INDEX idx_question_type (question_type),
+    INDEX idx_is_refusal (is_refusal),
+    INDEX idx_kb_id (kb_id),
+    INDEX idx_user_hash (user_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

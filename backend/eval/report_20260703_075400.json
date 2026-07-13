@@ -1,0 +1,68 @@
+{
+  "created_at": "2026-07-03T07:54:00.334049",
+  "summary": {
+    "hit_rate": 0.0,
+    "citation_accuracy": 0.0,
+    "refusal_accuracy": 0.0,
+    "stale_accuracy": 0.0,
+    "context_relevance": 0.0,
+    "context_precision": 0.0,
+    "context_recall": 0.0,
+    "faithfulness": 0.0,
+    "answer_relevance": 0.0,
+    "latency_p50_ms": 0,
+    "latency_p90_ms": 0
+  },
+  "results": [
+    {
+      "id": "eval-001",
+      "question": "报表导出后无法打开怎么办？",
+      "error": "the JSON object must be str, bytes or bytearray, not coroutine"
+    },
+    {
+      "id": "eval-002",
+      "question": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+      "error": "the JSON object must be str, bytes or bytearray, not coroutine"
+    },
+    {
+      "id": "eval-003",
+      "question": "v1.2.0 对报表导出做了什么优化？",
+      "error": "the JSON object must be str, bytes or bytearray, not coroutine"
+    },
+    {
+      "id": "eval-004",
+      "question": "工单 T2026050101 的问题原因是什么？",
+      "error": "the JSON object must be str, bytes or bytearray, not coroutine"
+    },
+    {
+      "id": "eval-005",
+      "question": "报表导出链接多久过期？",
+      "error": "the JSON object must be str, bytes or bytearray, not coroutine"
+    },
+    {
+      "id": "eval-006",
+      "question": "CloudBrief 的创始人是谁？",
+      "error": "the JSON object must be str, bytes or bytearray, not coroutine"
+    },
+    {
+      "id": "eval-007",
+      "question": "导出为 Excel 格式时报错怎么排查？",
+      "error": "the JSON object must be str, bytes or bytearray, not coroutine"
+    },
+    {
+      "id": "eval-008",
+      "question": "如何重置登录密码？",
+      "error": "the JSON object must be str, bytes or bytearray, not coroutine"
+    },
+    {
+      "id": "eval-009",
+      "question": "CSV 文件用 Excel 打开乱码怎么办？",
+      "error": "the JSON object must be str, bytes or bytearray, not coroutine"
+    },
+    {
+      "id": "eval-010",
+      "question": "我们公司今年的营收是多少？",
+      "error": "the JSON object must be str, bytes or bytearray, not coroutine"
+    }
+  ]
+}

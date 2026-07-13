@@ -1,0 +1,76 @@
+{
+  "avg_entity_recall": 1.0,
+  "avg_relation_recall": 1.0,
+  "details": [
+    {
+      "question": "CloudBrief 的 CEO 是谁？她直接管理哪些部门负责人？",
+      "entity_recall": 1.0,
+      "relation_recall": 1.0,
+      "returned_entity_count": 21,
+      "returned_relation_count": 43
+    },
+    {
+      "question": "知识库产品的技术负责人是谁？",
+      "entity_recall": 1.0,
+      "relation_recall": 1.0,
+      "returned_entity_count": 20,
+      "returned_relation_count": 33
+    },
+    {
+      "question": "哪些项目依赖 DashScope？",
+      "entity_recall": 1.0,
+      "relation_recall": 1.0,
+      "returned_entity_count": 19,
+      "returned_relation_count": 38
+    },
+    {
+      "question": "项目 Gamma 的项目经理是谁？参与部门有哪些？",
+      "entity_recall": 1.0,
+      "relation_recall": 1.0,
+      "returned_entity_count": 20,
+      "returned_relation_count": 37
+    },
+    {
+      "question": "陈静在哪些项目中担任角色？",
+      "entity_recall": 1.0,
+      "relation_recall": 1.0,
+      "returned_entity_count": 15,
+      "returned_relation_count": 29
+    },
+    {
+      "question": "智能客服产品依赖哪些供应商？",
+      "entity_recall": 1.0,
+      "relation_recall": 1.0,
+      "returned_entity_count": 16,
+      "returned_relation_count": 27
+    },
+    {
+      "question": "刘洋和哪位同事共同参与 Beta 项目？",
+      "entity_recall": 1.0,
+      "relation_recall": 1.0,
+      "returned_entity_count": 21,
+      "returned_relation_count": 40
+    },
+    {
+      "question": "数据分析平台使用哪家云服务商？",
+      "entity_recall": 1.0,
+      "relation_recall": 1.0,
+      "returned_entity_count": 12,
+      "returned_relation_count": 17
+    },
+    {
+      "question": "哪些产品由同一个人兼任产品负责人？请说明具体是谁。",
+      "entity_recall": 1.0,
+      "relation_recall": 1.0,
+      "returned_entity_count": 21,
+      "returned_relation_count": 45
+    },
+    {
+      "question": "项目 Alpha 的预计上线时间是什么时候？",
+      "entity_recall": 1.0,
+      "relation_recall": 1.0,
+      "returned_entity_count": 16,
+      "returned_relation_count": 28
+    }
+  ]
+}

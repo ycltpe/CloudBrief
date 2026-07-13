@@ -1,0 +1,667 @@
+import asyncio
+import json
+import re
+import time
+from collections import Counter
+from collections.abc import AsyncIterator
+from datetime import datetime
+
+import structlog
+
+from app.clients.model_client import ModelClient
+from app.config import get_settings
+from app.models.schemas import (
+    ChatRequest,
+    ChatResponse,
+    Citation,
+    ConversationSummary,
+    UserOut,
+)
+from app.pipelines.generation import (
+    GenerationPipeline,
+    GenerationPipelineInput,
+    StreamEvent,
+)
+from app.pipelines.retrieval import RetrievalPipeline
+from app.services.settings_service import SettingsService
+from app.stages.graph_rag_context_stage import GraphRAGContextStage
+from app.stages.query_rewrite import QueryRewriteInput, QueryRewriteStage
+from app.stores.conversation import ConversationStore
+from app.stores.graph_schema_store import GraphSchemaStore
+from app.stores.graph_shadow_store import GraphShadowStore
+from app.stores.graph_store import GraphStore
+from app.stores.kb_access import KbAccessStore
+from app.stores.query_log import QueryLogStore
+
+logger = structlog.get_logger()
+
+
+class ChatService:
+    """聊天流程编排：会话 -> 查询改写 -> 检索 -> 生成 -> 持久化。"""
+
+    def __init__(self, graph_store: GraphStore | None = None):
+        self.settings = get_settings()
+        self.conversation_store = ConversationStore()
+        self.model_client = ModelClient(self.settings)
+        self.retrieval_pipeline = RetrievalPipeline(self.model_client)
+        self.generation_pipeline = GenerationPipeline(self.model_client, graph_store=graph_store)
+        self.query_rewrite_stage = QueryRewriteStage()
+        self.graph_store = graph_store
+        self.graph_schema_store = GraphSchemaStore()
+        self.graph_shadow_store = GraphShadowStore()
+        self.kb_access_store = KbAccessStore()
+        self.settings_service = SettingsService()
+        self.query_log_store = QueryLogStore()
+
+    async def _fetch_graph_context(self, question: str, kb_id: str | None):
+        if not kb_id or not self.graph_store or not self.graph_store.is_available:
+            return None
+        try:
+            schema = self.graph_schema_store.get_by_directory_id(int(kb_id))
+            if not schema or not schema.enabled:
+                return None
+            if not (schema.entity_types or schema.relation_types):
+                return None
+            stage = GraphRAGContextStage(self.graph_store, model_client=self.model_client)
+            timeout = getattr(self.settings, "graphrag_timeout_seconds", 5.0)
+            return await asyncio.wait_for(
+                stage.run(question, kb_id, schema=schema),
+                timeout=timeout,
+            )
+        except Exception as exc:
+            logger.warning("chat_fetch_graph_context_failed", kb_id=kb_id, error=str(exc))
+        return None
+
+    def _is_shadow_mode_enabled(self, kb_id: str | None) -> bool:
+        if not kb_id:
+            return False
+        try:
+            schema = self.graph_schema_store.get_by_directory_id(int(kb_id))
+            return bool(schema and schema.shadow_mode)
+        except Exception:
+            return False
+
+    @staticmethod
+    def _derive_kb_id(chunks: list) -> str | None:
+        """从检索结果 source_id 中推导所属知识库目录 ID。"""
+        pattern = re.compile(r"^kb/dir_(\d+)/")
+        matches = [m.group(1) for c in chunks for m in [pattern.match(c.source_id)] if m]
+        if not matches:
+            return None
+        return Counter(matches).most_common(1)[0][0]
+
+    def _resolve_kb_id(self, request: ChatRequest, current_user: UserOut | None) -> str:
+        """根据请求中的 kb_ids 与当前用户权限解析本次查询使用的知识库 id。
+
+        2 周 MVP 仅支持单库查询；admin 可访问全部，普通用户仅能访问已授权库。
+        """
+        kb_ids = request.kb_ids or []
+        is_admin = current_user is not None and current_user.role == "admin"
+
+        if not kb_ids:
+            # 未指定时：admin 使用 default；普通用户使用其有权限的唯一库或 default
+            if is_admin:
+                return "default"
+            accessible = self.kb_access_store.get_user_accessible_kb_ids(
+                current_user.id if current_user else 0, include_default=True
+            )
+            return accessible[0] if len(accessible) == 1 else "default"
+
+        selected = kb_ids[0]
+        if len(kb_ids) > 1:
+            logger.warning("multi_kb_not_supported_in_mvp", kb_ids=kb_ids, selected=selected)
+
+        if selected == "default" or is_admin:
+            return selected
+
+        if current_user and self.kb_access_store.check_access(selected, current_user.id):
+            return selected
+
+        raise PermissionError(f"用户无权访问知识库 {selected}")
+
+    async def ask(
+        self,
+        request: ChatRequest,
+        current_user: UserOut | None = None,
+    ) -> ChatResponse:
+        user_id = current_user.id if current_user else None
+        received_at = datetime.utcnow()
+        start_total = time.perf_counter()
+        conversation_id = request.conversation_id or self.conversation_store.create(
+            user_id=user_id,
+        )
+        kb_id = self._resolve_kb_id(request, current_user)
+
+        # 读取历史并改写查询
+        start_rewrite = time.perf_counter()
+        history = await asyncio.to_thread(self.get_history, conversation_id)
+        rewrite_output = await asyncio.to_thread(
+            self.query_rewrite_stage.execute,
+            QueryRewriteInput(
+                current_question=request.question,
+                history=history,
+            ),
+        )
+        query = rewrite_output.rewritten_query
+        latency_ms_rewrite = int((time.perf_counter() - start_rewrite) * 1000)
+
+        # 检索
+        start_retrieve = time.perf_counter()
+        retrieval_output = await asyncio.to_thread(
+            self.retrieval_pipeline.retrieve, query, 50, 5, kb_id
+        )
+        retrieval_results = retrieval_output.results
+        is_fallback = retrieval_output.is_fallback
+        latency_ms_retrieve = int((time.perf_counter() - start_retrieve) * 1000)
+
+        # 生成
+        start_generate = time.perf_counter()
+        generation_output = await self.generation_pipeline.generate(
+            GenerationPipelineInput(
+                question=request.question,
+                chunks=retrieval_results,
+                max_score=max((r.score for r in retrieval_results), default=0.0),
+                is_fallback=is_fallback,
+                history=history,
+                kb_id=kb_id,
+            )
+        )
+        latency_ms_generate = int((time.perf_counter() - start_generate) * 1000)
+        latency_ms_total = int((time.perf_counter() - start_total) * 1000)
+
+        # Shadow mode：在不影响最终答案的前提下记录 GraphRAG 候选答案
+        graphrag_enabled = bool(kb_id and self._is_shadow_mode_enabled(kb_id))
+        graphrag_used = False
+        if kb_id and self._is_shadow_mode_enabled(kb_id):
+            try:
+                graph_context = await self._fetch_graph_context(request.question, kb_id)
+                graph_output = await self.generation_pipeline.generate(
+                    GenerationPipelineInput(
+                        question=request.question,
+                        chunks=retrieval_results,
+                        max_score=max((r.score for r in retrieval_results), default=0.0),
+                        is_fallback=is_fallback,
+                        history=history,
+                        kb_id=kb_id,
+                        graph_context=graph_context,
+                    )
+                )
+                import json
+                self.graph_shadow_store.record(
+                    kb_id=kb_id,
+                    user_id=user_id,
+                    question=request.question,
+                    vector_answer=generation_output.answer,
+                    graph_answer=graph_output.answer,
+                    subgraph_context_json=json.dumps(graph_context.diagnostics if graph_context else {}, ensure_ascii=False),
+                )
+                graphrag_used = bool(graph_context)
+            except Exception as exc:
+                logger.warning("shadow_mode_record_failed", kb_id=kb_id, error=str(exc))
+
+        # 保存消息
+        self.conversation_store.append_message(
+            conversation_id=conversation_id,
+            role="user",
+            content=request.question,
+        )
+
+        # 首次提问时初始化标题；旧数据无 user_id 时补录
+        conversation = self.conversation_store.get_conversation(conversation_id)
+        if conversation:
+            if user_id is not None and conversation.user_id is None:
+                self.conversation_store.update_user_id(conversation_id, user_id)
+            if not conversation.title:
+                default_title = request.question[:16]
+                self.conversation_store.update_title(conversation_id, default_title)
+
+        self.conversation_store.append_message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=generation_output.answer,
+            citations=generation_output.citations,
+            is_refusal=generation_output.is_refusal,
+        )
+        self.conversation_store.update_timestamp(conversation_id)
+
+        logger.info(
+            "chat_answer_generated",
+            conversation_id=conversation_id,
+            user_id=user_id,
+            is_refusal=generation_output.is_refusal,
+            is_stale=generation_output.is_stale,
+        )
+
+        # 异步写入查询日志
+        asyncio.create_task(
+            asyncio.to_thread(
+                self._log_query,
+                user_id=user_id,
+                received_at=received_at,
+                original_question=request.question,
+                rewritten_question=query,
+                kb_id=kb_id,
+                retrieval_adapter=self.settings.retrieval_adapter,
+                is_fallback=is_fallback,
+                max_score=max((r.score for r in retrieval_results), default=0.0) if retrieval_results else None,
+                retrieval_results=retrieval_results,
+                answer=generation_output.answer,
+                citations=generation_output.citations,
+                is_refusal=generation_output.is_refusal,
+                is_stale=generation_output.is_stale,
+                graphrag_enabled=graphrag_enabled,
+                graphrag_used=graphrag_used,
+                latency_ms_rewrite=latency_ms_rewrite,
+                latency_ms_retrieve=latency_ms_retrieve,
+                latency_ms_generate=latency_ms_generate,
+                latency_ms_total=latency_ms_total,
+            )
+        )
+
+        return ChatResponse(
+            conversation_id=conversation_id,
+            answer=generation_output.answer,
+            citations=generation_output.citations,
+            is_refusal=generation_output.is_refusal,
+            is_stale=generation_output.is_stale,
+            kb_id=kb_id,
+        )
+
+    async def ask_stream(
+        self,
+        request: ChatRequest,
+        current_user: UserOut | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """流式问答：实时 yield 增量文本与最终引用/元数据。"""
+        user_id = current_user.id if current_user else None
+        received_at = datetime.utcnow()
+        start_total = time.perf_counter()
+        full_answer = ""
+        conversation_id = None
+        citations = []
+        is_refusal = False
+        is_stale = False
+        query = ""
+        kb_id = "default"
+        retrieval_results = []
+        is_fallback = False
+        latency_ms_rewrite = None
+        latency_ms_retrieve = None
+        latency_ms_generate = None
+
+        try:
+            # 立刻让前端感知到“已收到”，避免长时间空白
+            yield StreamEvent(
+                type="status",
+                data={"step": "received", "message": "已收到，我先查一下知识库…"},
+            )
+
+            # 会话创建、历史读取、查询改写都是同步/IO 操作，放到线程池避免阻塞事件循环
+            start_rewrite = time.perf_counter()
+            conversation_id = request.conversation_id or await asyncio.to_thread(
+                self.conversation_store.create,
+                user_id=user_id,
+            )
+            history = await asyncio.to_thread(self.get_history, conversation_id)
+            rewrite_output = await asyncio.to_thread(
+                self.query_rewrite_stage.execute,
+                QueryRewriteInput(
+                    current_question=request.question,
+                    history=history,
+                ),
+            )
+            query = rewrite_output.rewritten_query
+            kb_id = self._resolve_kb_id(request, current_user)
+            latency_ms_rewrite = int((time.perf_counter() - start_rewrite) * 1000)
+
+            yield StreamEvent(
+                type="status",
+                data={"step": "retrieving", "message": "正在检索相关知识库…"},
+            )
+
+            # 检索阶段也放到线程池，避免阻塞 ASGI 事件循环
+            start_retrieve = time.perf_counter()
+            retrieval_output = await asyncio.to_thread(
+                self.retrieval_pipeline.retrieve, query, 50, 5, kb_id
+            )
+            retrieval_results = retrieval_output.results
+            is_fallback = retrieval_output.is_fallback
+            source_count = len(retrieval_results)
+            latency_ms_retrieve = int((time.perf_counter() - start_retrieve) * 1000)
+
+            # 先把检索到的来源标题推给前端， citations 不必等到生成结束
+            yield StreamEvent(
+                type="sources",
+                data={
+                    "conversation_id": conversation_id,
+                    "sources": [
+                        {
+                            "chunk_id": r.chunk_id,
+                            "title": r.title,
+                            "type": r.source_type,
+                        }
+                        for r in retrieval_results[:5]
+                    ],
+                },
+            )
+
+            if source_count > 0:
+                generating_message = f"找到 {source_count} 条相关资料，正在组织回答…"
+            else:
+                generating_message = "未找到直接相关资料，正在基于现有知识组织回答…"
+
+            yield StreamEvent(
+                type="status",
+                data={"step": "generating", "message": generating_message},
+            )
+
+            # 流式生成
+            start_generate = time.perf_counter()
+            async for event in self.generation_pipeline.generate_stream(
+                GenerationPipelineInput(
+                    question=request.question,
+                    chunks=retrieval_results,
+                    max_score=max((r.score for r in retrieval_results), default=0.0),
+                    is_fallback=is_fallback,
+                    history=history,
+                    kb_id=kb_id,
+                )
+            ):
+                if event.type == "chunk":
+                    full_answer += event.data.get("content", "")
+                    yield StreamEvent(
+                        type="chunk",
+                        data={
+                            "conversation_id": conversation_id,
+                            "content": event.data.get("content", ""),
+                        },
+                    )
+                elif event.type == "citations":
+                    citations = event.data.get("citations", [])
+                    is_refusal = event.data.get("is_refusal", False)
+                    is_stale = event.data.get("is_stale", False)
+                    yield StreamEvent(
+                        type="citations",
+                        data={
+                            "conversation_id": conversation_id,
+                            "citations": citations,
+                            "is_refusal": is_refusal,
+                            "is_stale": is_stale,
+                        },
+                    )
+                elif event.type == "done":
+                    yield StreamEvent(
+                        type="done",
+                        data={"conversation_id": conversation_id},
+                    )
+            latency_ms_generate = int((time.perf_counter() - start_generate) * 1000)
+            latency_ms_total = int((time.perf_counter() - start_total) * 1000)
+
+            # 持久化移到后台任务，避免拖尾阻塞响应收尾
+            asyncio.create_task(
+                asyncio.to_thread(
+                    self._persist_chat,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    question=request.question,
+                    full_answer=full_answer,
+                    citations=citations,
+                    is_refusal=is_refusal,
+                    is_stale=is_stale,
+                )
+            )
+
+            # Shadow mode：后台记录 GraphRAG 候选答案，不影响用户流
+            graphrag_enabled = bool(kb_id and self._is_shadow_mode_enabled(kb_id))
+            graphrag_used = False
+            if kb_id and self._is_shadow_mode_enabled(kb_id):
+                asyncio.create_task(
+                    self._record_shadow_async(
+                        kb_id=kb_id,
+                        user_id=user_id,
+                        question=request.question,
+                        retrieval_results=retrieval_results,
+                        is_fallback=is_fallback,
+                        history=history,
+                        vector_answer=full_answer,
+                    )
+                )
+                # 简单判断：如果 shadow 记录成功则认为 graphrag_used 为 true
+                graphrag_used = graphrag_enabled
+
+            # 异步写入查询日志
+            asyncio.create_task(
+                asyncio.to_thread(
+                    self._log_query,
+                    user_id=user_id,
+                    received_at=received_at,
+                    original_question=request.question,
+                    rewritten_question=query,
+                    kb_id=kb_id,
+                    retrieval_adapter=self.settings.retrieval_adapter,
+                    is_fallback=is_fallback,
+                    max_score=max((r.score for r in retrieval_results), default=0.0) if retrieval_results else None,
+                    retrieval_results=retrieval_results,
+                    answer=full_answer,
+                    citations=citations,
+                    is_refusal=is_refusal,
+                    is_stale=is_stale,
+                    graphrag_enabled=graphrag_enabled,
+                    graphrag_used=graphrag_used,
+                    latency_ms_rewrite=latency_ms_rewrite,
+                    latency_ms_retrieve=latency_ms_retrieve,
+                    latency_ms_generate=latency_ms_generate,
+                    latency_ms_total=latency_ms_total,
+                )
+            )
+        except Exception as exc:
+            logger.error(
+                "chat_stream_failed",
+                conversation_id=conversation_id,
+                user_id=user_id,
+                error=str(exc),
+            )
+            yield StreamEvent(
+                type="error",
+                data={
+                    "conversation_id": conversation_id,
+                    "message": str(exc),
+                },
+            )
+
+    async def _record_shadow_async(
+        self,
+        *,
+        kb_id: str,
+        user_id: int | None,
+        question: str,
+        retrieval_results: list,
+        is_fallback: bool,
+        history: list,
+        vector_answer: str,
+    ) -> None:
+        try:
+            graph_context = await self._fetch_graph_context(question, kb_id)
+            graph_output = await self.generation_pipeline.generate(
+                GenerationPipelineInput(
+                    question=question,
+                    chunks=retrieval_results,
+                    max_score=max((r.score for r in retrieval_results), default=0.0),
+                    is_fallback=is_fallback,
+                    history=history,
+                    kb_id=kb_id,
+                    graph_context=graph_context,
+                )
+            )
+            import json
+            await asyncio.to_thread(
+                self.graph_shadow_store.record,
+                kb_id=kb_id,
+                user_id=user_id,
+                question=question,
+                vector_answer=vector_answer,
+                graph_answer=graph_output.answer,
+                subgraph_context_json=json.dumps(
+                    graph_context.diagnostics if graph_context else {}, ensure_ascii=False
+                ),
+            )
+        except Exception as exc:
+            logger.warning("shadow_mode_record_async_failed", kb_id=kb_id, error=str(exc))
+
+    def get_history(self, conversation_id: str) -> list:
+        messages = self.conversation_store.get_messages(conversation_id)
+        result = []
+        for msg in messages:
+            entry: dict = {
+                "role": msg.role,
+                "content": msg.content,
+                "is_refusal": msg.is_refusal,
+                "created_at": msg.created_at.isoformat() if msg.created_at else None,
+            }
+            if msg.citations_json:
+                try:
+                    entry["citations"] = json.loads(msg.citations_json)
+                except Exception:
+                    entry["citations"] = []
+            result.append(entry)
+        return result
+
+    def _persist_chat(
+        self,
+        *,
+        conversation_id: str,
+        user_id: int | None,
+        question: str,
+        full_answer: str,
+        citations: list,
+        is_refusal: bool,
+        is_stale: bool,
+    ) -> None:
+        """在后台线程中持久化聊天消息，不阻塞 SSE 响应收尾。"""
+        try:
+            self.conversation_store.append_message(
+                conversation_id=conversation_id,
+                role="user",
+                content=question,
+            )
+            conversation = self.conversation_store.get_conversation(conversation_id)
+            if conversation:
+                if user_id is not None and conversation.user_id is None:
+                    self.conversation_store.update_user_id(conversation_id, user_id)
+                if not conversation.title:
+                    default_title = question[:16]
+                    self.conversation_store.update_title(conversation_id, default_title)
+            self.conversation_store.append_message(
+                conversation_id=conversation_id,
+                role="assistant",
+                content=full_answer,
+                citations=[Citation(**c) for c in citations],
+                is_refusal=is_refusal,
+            )
+            self.conversation_store.update_timestamp(conversation_id)
+
+            logger.info(
+                "chat_answer_streamed",
+                conversation_id=conversation_id,
+                user_id=user_id,
+                is_refusal=is_refusal,
+                is_stale=is_stale,
+            )
+        except Exception as exc:
+            logger.error(
+                "chat_persist_failed",
+                conversation_id=conversation_id,
+                user_id=user_id,
+                error=str(exc),
+            )
+
+    def list_conversations(
+        self,
+        user_id: int,
+        limit: int = 100,
+    ) -> list[ConversationSummary]:
+        conversations = self.conversation_store.list_by_user(user_id, limit=limit)
+        summaries: list[ConversationSummary] = []
+        for conversation in conversations:
+            last_msg = self.conversation_store.get_last_message(conversation.id)
+            preview = ""
+            if last_msg:
+                preview = last_msg.content[:60]
+            summaries.append(
+                ConversationSummary(
+                    id=conversation.id,
+                    title=conversation.title,
+                    preview=preview,
+                    updated_at=conversation.updated_at.isoformat() if conversation.updated_at else None,
+                )
+            )
+        return summaries
+
+    def update_conversation_title(
+        self,
+        conversation_id: str,
+        user_id: int,
+        title: str,
+    ) -> bool:
+        conversation = self.conversation_store.get_conversation(conversation_id)
+        if not conversation or conversation.user_id != user_id:
+            return False
+        return self.conversation_store.update_title(conversation_id, title)
+
+    def _log_query(
+        self,
+        *,
+        user_id: int | None,
+        received_at: datetime,
+        original_question: str,
+        rewritten_question: str | None,
+        kb_id: str,
+        retrieval_adapter: str,
+        is_fallback: bool,
+        max_score: float | None,
+        retrieval_results: list,
+        answer: str | None,
+        citations: list,
+        is_refusal: bool,
+        is_stale: bool,
+        graphrag_enabled: bool,
+        graphrag_used: bool,
+        latency_ms_rewrite: int | None,
+        latency_ms_retrieve: int | None,
+        latency_ms_generate: int | None,
+        latency_ms_total: int | None,
+    ) -> None:
+        """在后台线程中写入 query_logs，不阻塞主响应。"""
+        try:
+            config_snapshot = {
+                "embedding_model": self.settings_service.get_runtime_value("embedding_model"),
+                "llm_model": self.settings_service.get_runtime_value("llm_model"),
+                "reranker_provider": self.settings_service.get_runtime_value("reranker_provider"),
+                "refusal_threshold": self.settings_service.get_runtime_value("refusal_threshold"),
+                "stale_threshold_days": self.settings_service.get_runtime_value("stale_threshold_days"),
+            }
+            self.query_log_store.insert(
+                user_id=user_id,
+                received_at=received_at,
+                original_question=original_question,
+                rewritten_question=rewritten_question,
+                kb_id=kb_id,
+                question_type=None,
+                config_snapshot=config_snapshot,
+                retrieval_adapter=retrieval_adapter,
+                is_fallback=is_fallback,
+                max_score=max_score,
+                retrieved_chunks=retrieval_results,
+                answer=answer,
+                citations=citations,
+                is_refusal=is_refusal,
+                is_stale=is_stale,
+                graphrag_enabled=graphrag_enabled,
+                graphrag_used=graphrag_used,
+                latency_ms_rewrite=latency_ms_rewrite,
+                latency_ms_retrieve=latency_ms_retrieve,
+                latency_ms_generate=latency_ms_generate,
+                latency_ms_total=latency_ms_total,
+            )
+        except Exception as exc:
+            logger.warning("query_log_insert_failed", user_id=user_id, error=str(exc))

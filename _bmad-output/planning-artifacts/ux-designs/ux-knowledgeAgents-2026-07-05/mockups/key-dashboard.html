@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - CloudBrief Admin</title>
+  <style>
+    /* Governs: DESIGN.md Layout & Spacing, Components (Sidebar, Topbar, Card, Status Badge); EXPERIENCE.md Information Architecture, Component Patterns, State Patterns */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Inter, system-ui, sans-serif; background: #F8FAFC; color: #0F172A; font-size: 14px; line-height: 1.5; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: #fff; border-right: 1px solid #E2E8F0; display: flex; flex-direction: column; }
+    .sidebar-header { padding: 16px; border-bottom: 1px solid #E2E8F0; font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+    .sidebar-menu { flex: 1; padding: 12px; }
+    .menu-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 6px; color: #64748B; cursor: pointer; margin-bottom: 4px; }
+    .menu-item:hover { background: #F1F5F9; }
+    .menu-item.active { background: #F1F5F9; color: #2563EB; border-left: 2px solid #2563EB; margin-left: -2px; }
+    .sidebar-footer { padding: 12px; border-top: 1px solid #E2E8F0; }
+    .user-mini { display: flex; align-items: center; gap: 10px; }
+    .avatar { width: 32px; height: 32px; border-radius: 50%; background: #2563EB; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; }
+    .main { flex: 1; display: flex; flex-direction: column; }
+    .topbar { height: 56px; background: #fff; border-bottom: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; }
+    .topbar h1 { font-size: 20px; font-weight: 600; }
+    .content { padding: 24px; overflow-y: auto; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+    .card { background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .card-label { color: #64748B; font-size: 12px; font-weight: 500; margin-bottom: 8px; }
+    .card-value { font-size: 28px; font-weight: 600; margin-bottom: 6px; }
+    .card-meta { color: #64748B; font-size: 12px; }
+    .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 500; }
+    .badge-success { background: #D1FAE5; color: #065F46; }
+    .badge-warning { background: #FEF3C7; color: #92400E; }
+    .section-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #E2E8F0; }
+    .list-item:last-child { border-bottom: none; }
+    .list-title { font-weight: 500; }
+    .list-meta { color: #64748B; font-size: 12px; margin-top: 2px; }
+    .score-row { display: flex; gap: 12px; margin-top: 12px; }
+    .score { flex: 1; text-align: center; padding: 12px; background: #F8FAFC; border-radius: 6px; }
+    .score-value { font-size: 18px; font-weight: 600; }
+    .score-label { font-size: 11px; color: #64748B; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span>☁️</span> CloudBrief Admin
+      </div>
+      <nav class="sidebar-menu">
+        <div class="menu-item active">📊 Dashboard</div>
+        <div class="menu-item">⚙️ 系统设置</div>
+        <div class="menu-item">👥 用户管理</div>
+        <div class="menu-item">💬 聊天助手</div>
+        <div class="menu-item">📁 知识库管理</div>
+        <div class="menu-item">🎯 RAGAS 评测审计</div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-mini">
+          <div class="avatar">王</div>
+          <div>
+            <div style="font-weight:500;">老王</div>
+            <div style="font-size:12px;color:#64748B;">admin</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1>Dashboard</h1>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:12px;color:#64748B;">2026-07-05</span>
+          <div class="avatar">王</div>
+        </div>
+      </header>
+      <main class="content">
+        <div class="metrics">
+          <div class="card">
+            <div class="card-label">用户总数</div>
+            <div class="card-value">12</div>
+            <div class="card-meta">较上周 +3</div>
+          </div>
+          <div class="card">
+            <div class="card-label">今日会话数</div>
+            <div class="card-value">45</div>
+            <div class="card-meta">较昨日 +12</div>
+          </div>
+          <div class="card">
+            <div class="card-label">索引状态</div>
+            <div class="card-value" style="font-size:18px;display:flex;align-items:center;gap:8px;margin-top:6px;">
+              <span class="badge badge-success">正常</span>
+            </div>
+            <div class="card-meta">cloudbrief_chunks_v2</div>
+          </div>
+          <div class="card">
+            <div class="card-label">最近评测平均分</div>
+            <div class="card-value">0.82</div>
+            <div class="card-meta">faithfulness 略有下降</div>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="section-title">最近 RAGAS 指标</div>
+            <div class="score-row">
+              <div class="score"><div class="score-value">0.82</div><div class="score-label">Context Precision</div></div>
+              <div class="score"><div class="score-value">0.78</div><div class="score-label">Context Recall</div></div>
+              <div class="score"><div class="score-value">0.85</div><div class="score-label">Faithfulness</div></div>
+              <div class="score"><div class="score-value">0.88</div><div class="score-label">Answer Relevance</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title">最近重建任务</div>
+            <div class="list-item">
+              <div>
+                <div class="list-title">索引重建 #a1b2c3</div>
+                <div class="list-meta">2026-07-04 08:10:55</div>
+              </div>
+              <span class="badge badge-success">已完成</span>
+            </div>
+            <div class="list-item">
+              <div>
+                <div class="list-title">索引重建 #d4e5f6</div>
+                <div class="list-meta">2026-07-03 15:30:12</div>
+              </div>
+              <span class="badge badge-success">已完成</span>
+            </div>
+            <div class="list-item">
+              <div>
+                <div class="list-title">索引重建 #g7h8i9</div>
+                <div class="list-meta">2026-07-02 11:20:33</div>
+              </div>
+              <span class="badge badge-warning">失败</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

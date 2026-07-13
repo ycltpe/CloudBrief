@@ -1,0 +1,605 @@
+{
+  "created_at": "2026-07-03T07:59:19.169713",
+  "summary": {
+    "hit_rate": 0.8,
+    "citation_accuracy": 1.0,
+    "refusal_accuracy": 0.8,
+    "stale_accuracy": 1.0,
+    "context_relevance": 0.31,
+    "context_precision": 0.4,
+    "context_recall": 1.0,
+    "faithfulness": 0.8,
+    "answer_relevance": 0.8,
+    "latency_p50_ms": 15628,
+    "latency_p90_ms": 32763
+  },
+  "results": [
+    {
+      "id": "eval-001",
+      "question": "报表导出后无法打开怎么办？",
+      "answer": "如果报表导出后无法打开，建议按以下步骤排查和解决：\n\n1. **确认文件是否完整下载**：网络中断可能导致文件损坏或下载不完整，建议重新导出 [^1] [^2]。\n2. **检查本地软件版本**：Excel 2003 及更早版本默认无法打开 `.xlsx` 文件 [^1]。建议客户升级 Office 到 2007 或更高版本，或者在导出时选择兼容所有版本的 CSV 格式 [^3]。（注：v1.2.0 版本已新增兼容性检查，若检测到 Office 低于 2007 会自动提示改用 CSV [^4]）。\n3. **排查数据量限制**：如果数据量超过 10 万行，Excel 格式可能触发性能限制 [^1]。建议拆分为多个时间段导出或使用 CSV 格式 [^1]。（注：v1.2.0 版本已支持数据量超过 10 万行时自动拆分为多个文件，并提供合并下载入口 [^5]）。\n4. **处理编码乱码问题**：如果数据包含特殊字符，CSV 文件（默认 UTF-8）在部分旧版 Excel 中打开可能会乱码，可提示客户使用「数据导入」功能并选择 UTF-8 编码 [^1]。",
+      "is_refusal": false,
+      "is_stale": false,
+      "contexts": [
+        {
+          "chunk_id": "help_doc:help_docs/export-guide.md:0",
+          "title": "报表导出与下载指南",
+          "source_type": "help_doc",
+          "content": "# 报表导出与下载指南\n\nCloudBrief 支持将数据报表导出为 CSV、Excel 和 PDF 三种格式，方便客户离线查看。\n\n## 支持的导出格式\n\n- CSV：兼容性好，文件小，适合大数据量。\n- Excel（.xlsx）：保留样式和公式，适合需要二次编辑的场景。\n- PDF：固定版式，适合打印和归档。\n\n## 导出操作步骤\n\n1. 进入「数据报表」页面。\n2. 选择时间范围和筛选条件。\n3. 点击右上角「导出」按钮。\n4. 选择格式并确认下载。\n\n## 常见问题\n\n### 报表导出后无法打开怎么办？\n\n如果客户反馈导出文件无法打开，请按以下顺序排查：\n\n1. 确认文件是否完整下载。网络中断可能导致文件损坏，建议重新导出。\n2. 检查文件格式与本地软件版本是否匹配。例如 Excel 2003 及更早版本默认无法打开 .xlsx 文件，可让客户升级 Office 或改用 CSV 格式。\n3. 如果数据量超过 10 万行，Excel 格式可能触发性能限制，建议拆分为多个时间段导出或使用 CSV 格式。\n4. 查看是否包含特殊字符导致编码错误。CSV 默认使用 UTF-8，部分旧版 Excel 打开时会乱码，可提示客户使用「数据导入」功能选择 UTF-8 编码。\n\n### 导出为 Excel 格式时报错？\n\n当导出为 Excel 格式失败时，常见原因包括：\n\n- 报表中包含超过 32767 个字符的单元格内容（Excel 单单元格上限）。\n- 使用了特殊公式或函数，在生成 Excel 时解析失败。\n- 服务器临时文件目录空间不足。\n\n解决方案：先尝试导出 CSV 验证数据完整性；若 CSV 正常，则拆分数据或缩短时间范围后重试 Excel 导出。\n\n## 注意事项\n\n- 导出任务为异步执行，大文件可能需要几分钟。\n- 导出链接有效期为 24 小时，过期后需要重新生成。",
+          "score": 0.03252247488101534
+        },
+        {
+          "chunk_id": "faq:faq/common.json#2:0",
+          "title": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+          "source_type": "faq",
+          "content": "Q: 客户用旧版 Office 打不开 Excel 导出文件怎么办？\nA: 建议客户升级 Office 到 2007 或更高版本，或者在导出时选择 CSV 格式。CSV 兼容所有版本的 Excel。",
+          "score": 0.032266458495966696
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_0:0",
+          "title": "工单 #T2026050101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026050101\ntitle: 报表下载后打不开\ncontent: 客户反馈在 Chrome 浏览器下载报表后，双击文件提示无法打开。经排查为下载过程中网络中断，文件大小只有正常的一半。重新导出后解决。\nupdated_at: 2026-05-01",
+          "score": 0.03200204813108039
+        },
+        {
+          "chunk_id": "changelog:changelog/v1.2.0.json#1:0",
+          "title": "v1.2.0 发布：报表导出大文件拆分",
+          "source_type": "changelog",
+          "content": "v1.2.0 发布：报表导出大文件拆分\n当报表数据量超过 10 万行时，导出任务会自动拆分为多个文件，并在下载页面提供合并下载入口，解决单 Excel 文件过大导致打开失败的问题。",
+          "score": 0.030330882352941176
+        },
+        {
+          "chunk_id": "changelog:changelog/v1.2.0.json#0:0",
+          "title": "v1.2.0 发布：新增 Excel 导出兼容性提示",
+          "source_type": "changelog",
+          "content": "v1.2.0 发布：新增 Excel 导出兼容性提示\nv1.2.0 在导出 Excel 格式时增加了兼容性检查。如果检测到客户使用的 Office 版本低于 2007，系统会自动提示建议改用 CSV 格式，避免 .xlsx 文件无法打开的问题。",
+          "score": 0.030330882352941176
+        }
+      ],
+      "scores": {
+        "hit_rate": 1.0,
+        "citation_accuracy": 1.0,
+        "refusal_accuracy": true,
+        "stale_accuracy": true,
+        "context_relevance": 0.74,
+        "context_precision": 1.0,
+        "context_recall": 1.0,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "latency_ms": 32763
+      },
+      "expected_chunk_ids": [
+        "help_doc:help_docs/export-guide.md:0"
+      ]
+    },
+    {
+      "id": "eval-002",
+      "question": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+      "answer": "针对客户使用旧版 Office 打不开 Excel 导出文件的问题，建议采取以下措施：\n\n1. **升级软件**：建议客户将 Office 升级到 2007 或更高版本 [^1] [^2]。\n2. **更改导出格式**：建议客户在导出时选择 CSV 格式，因为 CSV 兼容所有版本的 Excel [^1] [^2]。\n3. **留意系统提示**：在 v1.2.0 及以上版本中，系统在导出 Excel 时会自动检查兼容性，若检测到 Office 版本低于 2007，会自动提示建议改用 CSV 格式以避免无法打开的问题 [^3]。",
+      "is_refusal": false,
+      "is_stale": false,
+      "contexts": [
+        {
+          "chunk_id": "faq:faq/common.json#2:0",
+          "title": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+          "source_type": "faq",
+          "content": "Q: 客户用旧版 Office 打不开 Excel 导出文件怎么办？\nA: 建议客户升级 Office 到 2007 或更高版本，或者在导出时选择 CSV 格式。CSV 兼容所有版本的 Excel。",
+          "score": 0.03278688524590164
+        },
+        {
+          "chunk_id": "changelog:changelog/v1.2.0.json#0:0",
+          "title": "v1.2.0 发布：新增 Excel 导出兼容性提示",
+          "source_type": "changelog",
+          "content": "v1.2.0 发布：新增 Excel 导出兼容性提示\nv1.2.0 在导出 Excel 格式时增加了兼容性检查。如果检测到客户使用的 Office 版本低于 2007，系统会自动提示建议改用 CSV 格式，避免 .xlsx 文件无法打开的问题。",
+          "score": 0.031754032258064516
+        },
+        {
+          "chunk_id": "help_doc:help_docs/export-guide.md:0",
+          "title": "报表导出与下载指南",
+          "source_type": "help_doc",
+          "content": "# 报表导出与下载指南\n\nCloudBrief 支持将数据报表导出为 CSV、Excel 和 PDF 三种格式，方便客户离线查看。\n\n## 支持的导出格式\n\n- CSV：兼容性好，文件小，适合大数据量。\n- Excel（.xlsx）：保留样式和公式，适合需要二次编辑的场景。\n- PDF：固定版式，适合打印和归档。\n\n## 导出操作步骤\n\n1. 进入「数据报表」页面。\n2. 选择时间范围和筛选条件。\n3. 点击右上角「导出」按钮。\n4. 选择格式并确认下载。\n\n## 常见问题\n\n### 报表导出后无法打开怎么办？\n\n如果客户反馈导出文件无法打开，请按以下顺序排查：\n\n1. 确认文件是否完整下载。网络中断可能导致文件损坏，建议重新导出。\n2. 检查文件格式与本地软件版本是否匹配。例如 Excel 2003 及更早版本默认无法打开 .xlsx 文件，可让客户升级 Office 或改用 CSV 格式。\n3. 如果数据量超过 10 万行，Excel 格式可能触发性能限制，建议拆分为多个时间段导出或使用 CSV 格式。\n4. 查看是否包含特殊字符导致编码错误。CSV 默认使用 UTF-8，部分旧版 Excel 打开时会乱码，可提示客户使用「数据导入」功能选择 UTF-8 编码。\n\n### 导出为 Excel 格式时报错？\n\n当导出为 Excel 格式失败时，常见原因包括：\n\n- 报表中包含超过 32767 个字符的单元格内容（Excel 单单元格上限）。\n- 使用了特殊公式或函数，在生成 Excel 时解析失败。\n- 服务器临时文件目录空间不足。\n\n解决方案：先尝试导出 CSV 验证数据完整性；若 CSV 正常，则拆分数据或缩短时间范围后重试 Excel 导出。\n\n## 注意事项\n\n- 导出任务为异步执行，大文件可能需要几分钟。\n- 导出链接有效期为 24 小时，过期后需要重新生成。",
+          "score": 0.031746031746031744
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_0:0",
+          "title": "工单 #T2026050101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026050101\ntitle: 报表下载后打不开\ncontent: 客户反馈在 Chrome 浏览器下载报表后，双击文件提示无法打开。经排查为下载过程中网络中断，文件大小只有正常的一半。重新导出后解决。\nupdated_at: 2026-05-01",
+          "score": 0.031054405392392875
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_2:0",
+          "title": "工单 #T2026060101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026060101\ntitle: 导出大文件失败\ncontent: 客户导出全年数据（约 50 万行）选择 Excel 格式，任务失败。建议拆分为季度导出或改用 CSV，客户选择 CSV 后成功。\nupdated_at: 2026-06-01",
+          "score": 0.031009615384615385
+        }
+      ],
+      "scores": {
+        "hit_rate": 1.0,
+        "citation_accuracy": 1.0,
+        "refusal_accuracy": true,
+        "stale_accuracy": true,
+        "context_relevance": 0.5599999999999999,
+        "context_precision": 0.6,
+        "context_recall": 1.0,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "latency_ms": 17757
+      },
+      "expected_chunk_ids": [
+        "faq:faq/common.json#2:0"
+      ]
+    },
+    {
+      "id": "eval-003",
+      "question": "v1.2.0 对报表导出做了什么优化？",
+      "answer": "v1.2.0 对报表导出做了以下两项优化：\n\n1. **新增 Excel 导出兼容性提示**：在导出 Excel 格式时增加了兼容性检查。如果检测到客户使用的 Office 版本低于 2007，系统会自动提示建议改用 CSV 格式，避免 .xlsx 文件无法打开的问题 [^1]。\n2. **报表导出大文件拆分**：当报表数据量超过 10 万行时，导出任务会自动拆分为多个文件，并在下载页面提供合并下载入口，解决单 Excel 文件过大导致打开失败的问题 [^2]。",
+      "is_refusal": false,
+      "is_stale": false,
+      "contexts": [
+        {
+          "chunk_id": "changelog:changelog/v1.2.0.json#0:0",
+          "title": "v1.2.0 发布：新增 Excel 导出兼容性提示",
+          "source_type": "changelog",
+          "content": "v1.2.0 发布：新增 Excel 导出兼容性提示\nv1.2.0 在导出 Excel 格式时增加了兼容性检查。如果检测到客户使用的 Office 版本低于 2007，系统会自动提示建议改用 CSV 格式，避免 .xlsx 文件无法打开的问题。",
+          "score": 0.03278688524590164
+        },
+        {
+          "chunk_id": "changelog:changelog/v1.2.0.json#1:0",
+          "title": "v1.2.0 发布：报表导出大文件拆分",
+          "source_type": "changelog",
+          "content": "v1.2.0 发布：报表导出大文件拆分\n当报表数据量超过 10 万行时，导出任务会自动拆分为多个文件，并在下载页面提供合并下载入口，解决单 Excel 文件过大导致打开失败的问题。",
+          "score": 0.03225806451612903
+        },
+        {
+          "chunk_id": "help_doc:help_docs/export-guide.md:0",
+          "title": "报表导出与下载指南",
+          "source_type": "help_doc",
+          "content": "# 报表导出与下载指南\n\nCloudBrief 支持将数据报表导出为 CSV、Excel 和 PDF 三种格式，方便客户离线查看。\n\n## 支持的导出格式\n\n- CSV：兼容性好，文件小，适合大数据量。\n- Excel（.xlsx）：保留样式和公式，适合需要二次编辑的场景。\n- PDF：固定版式，适合打印和归档。\n\n## 导出操作步骤\n\n1. 进入「数据报表」页面。\n2. 选择时间范围和筛选条件。\n3. 点击右上角「导出」按钮。\n4. 选择格式并确认下载。\n\n## 常见问题\n\n### 报表导出后无法打开怎么办？\n\n如果客户反馈导出文件无法打开，请按以下顺序排查：\n\n1. 确认文件是否完整下载。网络中断可能导致文件损坏，建议重新导出。\n2. 检查文件格式与本地软件版本是否匹配。例如 Excel 2003 及更早版本默认无法打开 .xlsx 文件，可让客户升级 Office 或改用 CSV 格式。\n3. 如果数据量超过 10 万行，Excel 格式可能触发性能限制，建议拆分为多个时间段导出或使用 CSV 格式。\n4. 查看是否包含特殊字符导致编码错误。CSV 默认使用 UTF-8，部分旧版 Excel 打开时会乱码，可提示客户使用「数据导入」功能选择 UTF-8 编码。\n\n### 导出为 Excel 格式时报错？\n\n当导出为 Excel 格式失败时，常见原因包括：\n\n- 报表中包含超过 32767 个字符的单元格内容（Excel 单单元格上限）。\n- 使用了特殊公式或函数，在生成 Excel 时解析失败。\n- 服务器临时文件目录空间不足。\n\n解决方案：先尝试导出 CSV 验证数据完整性；若 CSV 正常，则拆分数据或缩短时间范围后重试 Excel 导出。\n\n## 注意事项\n\n- 导出任务为异步执行，大文件可能需要几分钟。\n- 导出链接有效期为 24 小时，过期后需要重新生成。",
+          "score": 0.031746031746031744
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_2:0",
+          "title": "工单 #T2026060101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026060101\ntitle: 导出大文件失败\ncontent: 客户导出全年数据（约 50 万行）选择 Excel 格式，任务失败。建议拆分为季度导出或改用 CSV，客户选择 CSV 后成功。\nupdated_at: 2026-06-01",
+          "score": 0.030776515151515152
+        },
+        {
+          "chunk_id": "faq:faq/common.json#1:0",
+          "title": "报表导出链接多久过期？",
+          "source_type": "faq",
+          "content": "Q: 报表导出链接多久过期？\nA: 导出链接默认有效期为 24 小时。过期后需要重新进入报表页面点击导出。",
+          "score": 0.03055037313432836
+        }
+      ],
+      "scores": {
+        "hit_rate": 1.0,
+        "citation_accuracy": 1.0,
+        "refusal_accuracy": true,
+        "stale_accuracy": true,
+        "context_relevance": 0.4,
+        "context_precision": 0.4,
+        "context_recall": 1.0,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "latency_ms": 17627
+      },
+      "expected_chunk_ids": [
+        "changelog:changelog/v1.2.0.json#0:0",
+        "changelog:changelog/v1.2.0.json#1:0"
+      ]
+    },
+    {
+      "id": "eval-004",
+      "question": "工单 T2026050101 的问题原因是什么？",
+      "answer": "根据工单 T2026050101 的记录，问题原因如下：\n\n- 下载过程中网络中断，导致文件大小只有正常的一半（文件不完整）[^1]。",
+      "is_refusal": false,
+      "is_stale": false,
+      "contexts": [
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_0:0",
+          "title": "工单 #T2026050101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026050101\ntitle: 报表下载后打不开\ncontent: 客户反馈在 Chrome 浏览器下载报表后，双击文件提示无法打开。经排查为下载过程中网络中断，文件大小只有正常的一半。重新导出后解决。\nupdated_at: 2026-05-01",
+          "score": 0.03225806451612903
+        },
+        {
+          "chunk_id": "help_doc:help_docs/getting-started.md:0",
+          "title": "快速入门",
+          "source_type": "help_doc",
+          "content": "# 快速入门\n\n欢迎使用 CloudBrief。本文档帮助新客服快速上手。\n\n## 登录与首页\n\n使用企业邮箱登录支持工作台。首页展示待处理工单、知识库快捷入口和最近更新。\n\n## 处理工单流程\n\n1. 查看客户问题\n2. 在副驾中搜索相关知识\n3. 核对引用来源后回复客户\n4. 标记工单解决状态\n\n## 常用快捷键\n\n- `Cmd + K` 打开副驾搜索\n- `Esc` 关闭弹窗\n- `Shift + R` 标记已解决",
+          "score": 0.032018442622950824
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_2:0",
+          "title": "工单 #T2026060101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026060101\ntitle: 导出大文件失败\ncontent: 客户导出全年数据（约 50 万行）选择 Excel 格式，任务失败。建议拆分为季度导出或改用 CSV，客户选择 CSV 后成功。\nupdated_at: 2026-06-01",
+          "score": 0.030679156908665108
+        },
+        {
+          "chunk_id": "help_doc:help_docs/export-guide.md:0",
+          "title": "报表导出与下载指南",
+          "source_type": "help_doc",
+          "content": "# 报表导出与下载指南\n\nCloudBrief 支持将数据报表导出为 CSV、Excel 和 PDF 三种格式，方便客户离线查看。\n\n## 支持的导出格式\n\n- CSV：兼容性好，文件小，适合大数据量。\n- Excel（.xlsx）：保留样式和公式，适合需要二次编辑的场景。\n- PDF：固定版式，适合打印和归档。\n\n## 导出操作步骤\n\n1. 进入「数据报表」页面。\n2. 选择时间范围和筛选条件。\n3. 点击右上角「导出」按钮。\n4. 选择格式并确认下载。\n\n## 常见问题\n\n### 报表导出后无法打开怎么办？\n\n如果客户反馈导出文件无法打开，请按以下顺序排查：\n\n1. 确认文件是否完整下载。网络中断可能导致文件损坏，建议重新导出。\n2. 检查文件格式与本地软件版本是否匹配。例如 Excel 2003 及更早版本默认无法打开 .xlsx 文件，可让客户升级 Office 或改用 CSV 格式。\n3. 如果数据量超过 10 万行，Excel 格式可能触发性能限制，建议拆分为多个时间段导出或使用 CSV 格式。\n4. 查看是否包含特殊字符导致编码错误。CSV 默认使用 UTF-8，部分旧版 Excel 打开时会乱码，可提示客户使用「数据导入」功能选择 UTF-8 编码。\n\n### 导出为 Excel 格式时报错？\n\n当导出为 Excel 格式失败时，常见原因包括：\n\n- 报表中包含超过 32767 个字符的单元格内容（Excel 单单元格上限）。\n- 使用了特殊公式或函数，在生成 Excel 时解析失败。\n- 服务器临时文件目录空间不足。\n\n解决方案：先尝试导出 CSV 验证数据完整性；若 CSV 正常，则拆分数据或缩短时间范围后重试 Excel 导出。\n\n## 注意事项\n\n- 导出任务为异步执行，大文件可能需要几分钟。\n- 导出链接有效期为 24 小时，过期后需要重新生成。",
+          "score": 0.03057889822595705
+        },
+        {
+          "chunk_id": "faq:faq/common.json#2:0",
+          "title": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+          "source_type": "faq",
+          "content": "Q: 客户用旧版 Office 打不开 Excel 导出文件怎么办？\nA: 建议客户升级 Office 到 2007 或更高版本，或者在导出时选择 CSV 格式。CSV 兼容所有版本的 Excel。",
+          "score": 0.03055037313432836
+        }
+      ],
+      "scores": {
+        "hit_rate": 1.0,
+        "citation_accuracy": 1.0,
+        "refusal_accuracy": true,
+        "stale_accuracy": true,
+        "context_relevance": 0.0,
+        "context_precision": 0.4,
+        "context_recall": 1.0,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "latency_ms": 9663
+      },
+      "expected_chunk_ids": [
+        "ticket:tickets/tickets.csv#row_0:0"
+      ]
+    },
+    {
+      "id": "eval-005",
+      "question": "报表导出链接多久过期？",
+      "answer": "1. 报表导出链接默认有效期为 24 小时 [^1] [^2]。\n2. 链接过期后，需要重新进入报表页面点击导出或重新生成 [^1] [^2]。",
+      "is_refusal": false,
+      "is_stale": false,
+      "contexts": [
+        {
+          "chunk_id": "faq:faq/common.json#1:0",
+          "title": "报表导出链接多久过期？",
+          "source_type": "faq",
+          "content": "Q: 报表导出链接多久过期？\nA: 导出链接默认有效期为 24 小时。过期后需要重新进入报表页面点击导出。",
+          "score": 0.03278688524590164
+        },
+        {
+          "chunk_id": "help_doc:help_docs/export-guide.md:0",
+          "title": "报表导出与下载指南",
+          "source_type": "help_doc",
+          "content": "# 报表导出与下载指南\n\nCloudBrief 支持将数据报表导出为 CSV、Excel 和 PDF 三种格式，方便客户离线查看。\n\n## 支持的导出格式\n\n- CSV：兼容性好，文件小，适合大数据量。\n- Excel（.xlsx）：保留样式和公式，适合需要二次编辑的场景。\n- PDF：固定版式，适合打印和归档。\n\n## 导出操作步骤\n\n1. 进入「数据报表」页面。\n2. 选择时间范围和筛选条件。\n3. 点击右上角「导出」按钮。\n4. 选择格式并确认下载。\n\n## 常见问题\n\n### 报表导出后无法打开怎么办？\n\n如果客户反馈导出文件无法打开，请按以下顺序排查：\n\n1. 确认文件是否完整下载。网络中断可能导致文件损坏，建议重新导出。\n2. 检查文件格式与本地软件版本是否匹配。例如 Excel 2003 及更早版本默认无法打开 .xlsx 文件，可让客户升级 Office 或改用 CSV 格式。\n3. 如果数据量超过 10 万行，Excel 格式可能触发性能限制，建议拆分为多个时间段导出或使用 CSV 格式。\n4. 查看是否包含特殊字符导致编码错误。CSV 默认使用 UTF-8，部分旧版 Excel 打开时会乱码，可提示客户使用「数据导入」功能选择 UTF-8 编码。\n\n### 导出为 Excel 格式时报错？\n\n当导出为 Excel 格式失败时，常见原因包括：\n\n- 报表中包含超过 32767 个字符的单元格内容（Excel 单单元格上限）。\n- 使用了特殊公式或函数，在生成 Excel 时解析失败。\n- 服务器临时文件目录空间不足。\n\n解决方案：先尝试导出 CSV 验证数据完整性；若 CSV 正常，则拆分数据或缩短时间范围后重试 Excel 导出。\n\n## 注意事项\n\n- 导出任务为异步执行，大文件可能需要几分钟。\n- 导出链接有效期为 24 小时，过期后需要重新生成。",
+          "score": 0.03200204813108039
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_2:0",
+          "title": "工单 #T2026060101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026060101\ntitle: 导出大文件失败\ncontent: 客户导出全年数据（约 50 万行）选择 Excel 格式，任务失败。建议拆分为季度导出或改用 CSV，客户选择 CSV 后成功。\nupdated_at: 2026-06-01",
+          "score": 0.03125763125763126
+        },
+        {
+          "chunk_id": "faq:faq/common.json#2:0",
+          "title": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+          "source_type": "faq",
+          "content": "Q: 客户用旧版 Office 打不开 Excel 导出文件怎么办？\nA: 建议客户升级 Office 到 2007 或更高版本，或者在导出时选择 CSV 格式。CSV 兼容所有版本的 Excel。",
+          "score": 0.031009615384615385
+        },
+        {
+          "chunk_id": "changelog:changelog/v1.2.0.json#1:0",
+          "title": "v1.2.0 发布：报表导出大文件拆分",
+          "source_type": "changelog",
+          "content": "v1.2.0 发布：报表导出大文件拆分\n当报表数据量超过 10 万行时，导出任务会自动拆分为多个文件，并在下载页面提供合并下载入口，解决单 Excel 文件过大导致打开失败的问题。",
+          "score": 0.030776515151515152
+        }
+      ],
+      "scores": {
+        "hit_rate": 1.0,
+        "citation_accuracy": 1.0,
+        "refusal_accuracy": true,
+        "stale_accuracy": true,
+        "context_relevance": 0.4,
+        "context_precision": 0.4,
+        "context_recall": 1.0,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "latency_ms": 9818
+      },
+      "expected_chunk_ids": [
+        "faq:faq/common.json#1:0"
+      ]
+    },
+    {
+      "id": "eval-006",
+      "question": "CloudBrief 的创始人是谁？",
+      "answer": "根据当前知识库，我找不到足够信息回答这个问题。",
+      "is_refusal": false,
+      "is_stale": false,
+      "contexts": [
+        {
+          "chunk_id": "faq:faq/common.json#0:0",
+          "title": "如何重置 CloudBrief 登录密码？",
+          "source_type": "faq",
+          "content": "Q: 如何重置 CloudBrief 登录密码？\nA: 在登录页面点击「忘记密码」，输入企业邮箱后接收重置链接。链接 15 分钟内有效。",
+          "score": 0.03252247488101534
+        },
+        {
+          "chunk_id": "help_doc:help_docs/export-guide.md:0",
+          "title": "报表导出与下载指南",
+          "source_type": "help_doc",
+          "content": "# 报表导出与下载指南\n\nCloudBrief 支持将数据报表导出为 CSV、Excel 和 PDF 三种格式，方便客户离线查看。\n\n## 支持的导出格式\n\n- CSV：兼容性好，文件小，适合大数据量。\n- Excel（.xlsx）：保留样式和公式，适合需要二次编辑的场景。\n- PDF：固定版式，适合打印和归档。\n\n## 导出操作步骤\n\n1. 进入「数据报表」页面。\n2. 选择时间范围和筛选条件。\n3. 点击右上角「导出」按钮。\n4. 选择格式并确认下载。\n\n## 常见问题\n\n### 报表导出后无法打开怎么办？\n\n如果客户反馈导出文件无法打开，请按以下顺序排查：\n\n1. 确认文件是否完整下载。网络中断可能导致文件损坏，建议重新导出。\n2. 检查文件格式与本地软件版本是否匹配。例如 Excel 2003 及更早版本默认无法打开 .xlsx 文件，可让客户升级 Office 或改用 CSV 格式。\n3. 如果数据量超过 10 万行，Excel 格式可能触发性能限制，建议拆分为多个时间段导出或使用 CSV 格式。\n4. 查看是否包含特殊字符导致编码错误。CSV 默认使用 UTF-8，部分旧版 Excel 打开时会乱码，可提示客户使用「数据导入」功能选择 UTF-8 编码。\n\n### 导出为 Excel 格式时报错？\n\n当导出为 Excel 格式失败时，常见原因包括：\n\n- 报表中包含超过 32767 个字符的单元格内容（Excel 单单元格上限）。\n- 使用了特殊公式或函数，在生成 Excel 时解析失败。\n- 服务器临时文件目录空间不足。\n\n解决方案：先尝试导出 CSV 验证数据完整性；若 CSV 正常，则拆分数据或缩短时间范围后重试 Excel 导出。\n\n## 注意事项\n\n- 导出任务为异步执行，大文件可能需要几分钟。\n- 导出链接有效期为 24 小时，过期后需要重新生成。",
+          "score": 0.032266458495966696
+        },
+        {
+          "chunk_id": "help_doc:help_docs/getting-started.md:0",
+          "title": "快速入门",
+          "source_type": "help_doc",
+          "content": "# 快速入门\n\n欢迎使用 CloudBrief。本文档帮助新客服快速上手。\n\n## 登录与首页\n\n使用企业邮箱登录支持工作台。首页展示待处理工单、知识库快捷入口和最近更新。\n\n## 处理工单流程\n\n1. 查看客户问题\n2. 在副驾中搜索相关知识\n3. 核对引用来源后回复客户\n4. 标记工单解决状态\n\n## 常用快捷键\n\n- `Cmd + K` 打开副驾搜索\n- `Esc` 关闭弹窗\n- `Shift + R` 标记已解决",
+          "score": 0.03200204813108039
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_0:0",
+          "title": "工单 #T2026050101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026050101\ntitle: 报表下载后打不开\ncontent: 客户反馈在 Chrome 浏览器下载报表后，双击文件提示无法打开。经排查为下载过程中网络中断，文件大小只有正常的一半。重新导出后解决。\nupdated_at: 2026-05-01",
+          "score": 0.030117753623188408
+        },
+        {
+          "chunk_id": "faq:faq/common.json#2:0",
+          "title": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+          "source_type": "faq",
+          "content": "Q: 客户用旧版 Office 打不开 Excel 导出文件怎么办？\nA: 建议客户升级 Office 到 2007 或更高版本，或者在导出时选择 CSV 格式。CSV 兼容所有版本的 Excel。",
+          "score": 0.030117753623188408
+        }
+      ],
+      "scores": {
+        "hit_rate": 0.0,
+        "citation_accuracy": 1.0,
+        "refusal_accuracy": false,
+        "stale_accuracy": true,
+        "context_relevance": 0.0,
+        "context_precision": 0.0,
+        "context_recall": 1.0,
+        "faithfulness": 0.0,
+        "answer_relevance": 0.0,
+        "latency_ms": 3042
+      },
+      "expected_chunk_ids": []
+    },
+    {
+      "id": "eval-007",
+      "question": "导出为 Excel 格式时报错怎么排查？",
+      "answer": "导出为 Excel 格式时报错的排查原因及解决方案如下：\n\n**1. 常见原因排查**\n* **单元格内容超限**：检查报表中是否包含超过 32767 个字符的单元格内容（达到 Excel 单单元格上限）[^1]。\n* **公式解析失败**：检查是否使用了特殊公式或函数，导致在生成 Excel 时解析失败 [^1]。\n* **服务器空间不足**：检查服务器临时文件目录空间是否不足 [^1]。\n* **数据量过大**：检查数据量是否过大（如超过 10 万行），从而触发性能限制导致任务失败 [^1]。\n\n**2. 解决方案**\n* **验证数据**：先尝试导出 CSV 格式，以验证数据的完整性 [^1]。\n* **拆分数据**：若 CSV 导出正常，建议拆分数据（例如按季度拆分）或缩短时间范围后，再重试 Excel 导出 [^1] [^2]。\n* **更换格式**：如果不需要保留样式和公式，可直接改用 CSV 格式导出 [^2]。",
+      "is_refusal": false,
+      "is_stale": false,
+      "contexts": [
+        {
+          "chunk_id": "faq:faq/common.json#2:0",
+          "title": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+          "source_type": "faq",
+          "content": "Q: 客户用旧版 Office 打不开 Excel 导出文件怎么办？\nA: 建议客户升级 Office 到 2007 或更高版本，或者在导出时选择 CSV 格式。CSV 兼容所有版本的 Excel。",
+          "score": 0.03252247488101534
+        },
+        {
+          "chunk_id": "help_doc:help_docs/export-guide.md:0",
+          "title": "报表导出与下载指南",
+          "source_type": "help_doc",
+          "content": "# 报表导出与下载指南\n\nCloudBrief 支持将数据报表导出为 CSV、Excel 和 PDF 三种格式，方便客户离线查看。\n\n## 支持的导出格式\n\n- CSV：兼容性好，文件小，适合大数据量。\n- Excel（.xlsx）：保留样式和公式，适合需要二次编辑的场景。\n- PDF：固定版式，适合打印和归档。\n\n## 导出操作步骤\n\n1. 进入「数据报表」页面。\n2. 选择时间范围和筛选条件。\n3. 点击右上角「导出」按钮。\n4. 选择格式并确认下载。\n\n## 常见问题\n\n### 报表导出后无法打开怎么办？\n\n如果客户反馈导出文件无法打开，请按以下顺序排查：\n\n1. 确认文件是否完整下载。网络中断可能导致文件损坏，建议重新导出。\n2. 检查文件格式与本地软件版本是否匹配。例如 Excel 2003 及更早版本默认无法打开 .xlsx 文件，可让客户升级 Office 或改用 CSV 格式。\n3. 如果数据量超过 10 万行，Excel 格式可能触发性能限制，建议拆分为多个时间段导出或使用 CSV 格式。\n4. 查看是否包含特殊字符导致编码错误。CSV 默认使用 UTF-8，部分旧版 Excel 打开时会乱码，可提示客户使用「数据导入」功能选择 UTF-8 编码。\n\n### 导出为 Excel 格式时报错？\n\n当导出为 Excel 格式失败时，常见原因包括：\n\n- 报表中包含超过 32767 个字符的单元格内容（Excel 单单元格上限）。\n- 使用了特殊公式或函数，在生成 Excel 时解析失败。\n- 服务器临时文件目录空间不足。\n\n解决方案：先尝试导出 CSV 验证数据完整性；若 CSV 正常，则拆分数据或缩短时间范围后重试 Excel 导出。\n\n## 注意事项\n\n- 导出任务为异步执行，大文件可能需要几分钟。\n- 导出链接有效期为 24 小时，过期后需要重新生成。",
+          "score": 0.03252247488101534
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_2:0",
+          "title": "工单 #T2026060101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026060101\ntitle: 导出大文件失败\ncontent: 客户导出全年数据（约 50 万行）选择 Excel 格式，任务失败。建议拆分为季度导出或改用 CSV，客户选择 CSV 后成功。\nupdated_at: 2026-06-01",
+          "score": 0.031024531024531024
+        },
+        {
+          "chunk_id": "changelog:changelog/v1.2.0.json#0:0",
+          "title": "v1.2.0 发布：新增 Excel 导出兼容性提示",
+          "source_type": "changelog",
+          "content": "v1.2.0 发布：新增 Excel 导出兼容性提示\nv1.2.0 在导出 Excel 格式时增加了兼容性检查。如果检测到客户使用的 Office 版本低于 2007，系统会自动提示建议改用 CSV 格式，避免 .xlsx 文件无法打开的问题。",
+          "score": 0.031009615384615385
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_0:0",
+          "title": "工单 #T2026050101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026050101\ntitle: 报表下载后打不开\ncontent: 客户反馈在 Chrome 浏览器下载报表后，双击文件提示无法打开。经排查为下载过程中网络中断，文件大小只有正常的一半。重新导出后解决。\nupdated_at: 2026-05-01",
+          "score": 0.03057889822595705
+        }
+      ],
+      "scores": {
+        "hit_rate": 1.0,
+        "citation_accuracy": 1.0,
+        "refusal_accuracy": true,
+        "stale_accuracy": true,
+        "context_relevance": 0.44000000000000006,
+        "context_precision": 0.6,
+        "context_recall": 1.0,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "latency_ms": 23942
+      },
+      "expected_chunk_ids": [
+        "help_doc:help_docs/export-guide.md:0"
+      ]
+    },
+    {
+      "id": "eval-008",
+      "question": "如何重置登录密码？",
+      "answer": "重置 CloudBrief 登录密码的步骤如下：\n\n1. 在登录页面点击「忘记密码」 [^1]。\n2. 输入企业邮箱后接收重置链接 [^1]。\n3. 请注意，重置链接 15 分钟内有效 [^1]。",
+      "is_refusal": false,
+      "is_stale": false,
+      "contexts": [
+        {
+          "chunk_id": "faq:faq/common.json#0:0",
+          "title": "如何重置 CloudBrief 登录密码？",
+          "source_type": "faq",
+          "content": "Q: 如何重置 CloudBrief 登录密码？\nA: 在登录页面点击「忘记密码」，输入企业邮箱后接收重置链接。链接 15 分钟内有效。",
+          "score": 0.03278688524590164
+        },
+        {
+          "chunk_id": "help_doc:help_docs/getting-started.md:0",
+          "title": "快速入门",
+          "source_type": "help_doc",
+          "content": "# 快速入门\n\n欢迎使用 CloudBrief。本文档帮助新客服快速上手。\n\n## 登录与首页\n\n使用企业邮箱登录支持工作台。首页展示待处理工单、知识库快捷入口和最近更新。\n\n## 处理工单流程\n\n1. 查看客户问题\n2. 在副驾中搜索相关知识\n3. 核对引用来源后回复客户\n4. 标记工单解决状态\n\n## 常用快捷键\n\n- `Cmd + K` 打开副驾搜索\n- `Esc` 关闭弹窗\n- `Shift + R` 标记已解决",
+          "score": 0.03225806451612903
+        },
+        {
+          "chunk_id": "faq:faq/common.json#2:0",
+          "title": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+          "source_type": "faq",
+          "content": "Q: 客户用旧版 Office 打不开 Excel 导出文件怎么办？\nA: 建议客户升级 Office 到 2007 或更高版本，或者在导出时选择 CSV 格式。CSV 兼容所有版本的 Excel。",
+          "score": 0.031009615384615385
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_0:0",
+          "title": "工单 #T2026050101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026050101\ntitle: 报表下载后打不开\ncontent: 客户反馈在 Chrome 浏览器下载报表后，双击文件提示无法打开。经排查为下载过程中网络中断，文件大小只有正常的一半。重新导出后解决。\nupdated_at: 2026-05-01",
+          "score": 0.03057889822595705
+        },
+        {
+          "chunk_id": "faq:faq/common.json#1:0",
+          "title": "报表导出链接多久过期？",
+          "source_type": "faq",
+          "content": "Q: 报表导出链接多久过期？\nA: 导出链接默认有效期为 24 小时。过期后需要重新进入报表页面点击导出。",
+          "score": 0.03057889822595705
+        }
+      ],
+      "scores": {
+        "hit_rate": 1.0,
+        "citation_accuracy": 1.0,
+        "refusal_accuracy": true,
+        "stale_accuracy": true,
+        "context_relevance": 0.2,
+        "context_precision": 0.2,
+        "context_recall": 1.0,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "latency_ms": 10873
+      },
+      "expected_chunk_ids": [
+        "faq:faq/common.json#0:0"
+      ]
+    },
+    {
+      "id": "eval-009",
+      "question": "CSV 文件用 Excel 打开乱码怎么办？",
+      "answer": "针对 CSV 文件用 Excel 打开乱码的问题，建议采取以下操作：\n\n1. 指导客户通过 Excel 的「数据」->「从文本/CSV」导入（或「数据导入」功能）来打开文件 [^1] [^2]。\n2. 在导入过程中选择 UTF-8 编码，即可解决乱码并正常显示 [^1] [^2]。",
+      "is_refusal": false,
+      "is_stale": false,
+      "contexts": [
+        {
+          "chunk_id": "faq:faq/common.json#2:0",
+          "title": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+          "source_type": "faq",
+          "content": "Q: 客户用旧版 Office 打不开 Excel 导出文件怎么办？\nA: 建议客户升级 Office 到 2007 或更高版本，或者在导出时选择 CSV 格式。CSV 兼容所有版本的 Excel。",
+          "score": 0.03252247488101534
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_1:0",
+          "title": "工单 #T2026051501",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026051501\ntitle: Excel 导出乱码\ncontent: 客户使用 Excel 2016 打开 CSV 报表出现中文乱码。指导客户通过「数据」->「从文本/CSV」导入并选择 UTF-8 编码后正常显示。\nupdated_at: 2026-05-15",
+          "score": 0.032266458495966696
+        },
+        {
+          "chunk_id": "help_doc:help_docs/export-guide.md:0",
+          "title": "报表导出与下载指南",
+          "source_type": "help_doc",
+          "content": "# 报表导出与下载指南\n\nCloudBrief 支持将数据报表导出为 CSV、Excel 和 PDF 三种格式，方便客户离线查看。\n\n## 支持的导出格式\n\n- CSV：兼容性好，文件小，适合大数据量。\n- Excel（.xlsx）：保留样式和公式，适合需要二次编辑的场景。\n- PDF：固定版式，适合打印和归档。\n\n## 导出操作步骤\n\n1. 进入「数据报表」页面。\n2. 选择时间范围和筛选条件。\n3. 点击右上角「导出」按钮。\n4. 选择格式并确认下载。\n\n## 常见问题\n\n### 报表导出后无法打开怎么办？\n\n如果客户反馈导出文件无法打开，请按以下顺序排查：\n\n1. 确认文件是否完整下载。网络中断可能导致文件损坏，建议重新导出。\n2. 检查文件格式与本地软件版本是否匹配。例如 Excel 2003 及更早版本默认无法打开 .xlsx 文件，可让客户升级 Office 或改用 CSV 格式。\n3. 如果数据量超过 10 万行，Excel 格式可能触发性能限制，建议拆分为多个时间段导出或使用 CSV 格式。\n4. 查看是否包含特殊字符导致编码错误。CSV 默认使用 UTF-8，部分旧版 Excel 打开时会乱码，可提示客户使用「数据导入」功能选择 UTF-8 编码。\n\n### 导出为 Excel 格式时报错？\n\n当导出为 Excel 格式失败时，常见原因包括：\n\n- 报表中包含超过 32767 个字符的单元格内容（Excel 单单元格上限）。\n- 使用了特殊公式或函数，在生成 Excel 时解析失败。\n- 服务器临时文件目录空间不足。\n\n解决方案：先尝试导出 CSV 验证数据完整性；若 CSV 正常，则拆分数据或缩短时间范围后重试 Excel 导出。\n\n## 注意事项\n\n- 导出任务为异步执行，大文件可能需要几分钟。\n- 导出链接有效期为 24 小时，过期后需要重新生成。",
+          "score": 0.03200204813108039
+        },
+        {
+          "chunk_id": "changelog:changelog/v1.2.0.json#0:0",
+          "title": "v1.2.0 发布：新增 Excel 导出兼容性提示",
+          "source_type": "changelog",
+          "content": "v1.2.0 发布：新增 Excel 导出兼容性提示\nv1.2.0 在导出 Excel 格式时增加了兼容性检查。如果检测到客户使用的 Office 版本低于 2007，系统会自动提示建议改用 CSV 格式，避免 .xlsx 文件无法打开的问题。",
+          "score": 0.03125
+        },
+        {
+          "chunk_id": "changelog:changelog/v1.2.0.json#1:0",
+          "title": "v1.2.0 发布：报表导出大文件拆分",
+          "source_type": "changelog",
+          "content": "v1.2.0 发布：报表导出大文件拆分\n当报表数据量超过 10 万行时，导出任务会自动拆分为多个文件，并在下载页面提供合并下载入口，解决单 Excel 文件过大导致打开失败的问题。",
+          "score": 0.03076923076923077
+        }
+      ],
+      "scores": {
+        "hit_rate": 1.0,
+        "citation_accuracy": 1.0,
+        "refusal_accuracy": true,
+        "stale_accuracy": true,
+        "context_relevance": 0.36,
+        "context_precision": 0.4,
+        "context_recall": 1.0,
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "latency_ms": 15628
+      },
+      "expected_chunk_ids": [
+        "help_doc:help_docs/export-guide.md:0"
+      ]
+    },
+    {
+      "id": "eval-010",
+      "question": "我们公司今年的营收是多少？",
+      "answer": "根据当前知识库，我找不到足够信息回答这个问题。",
+      "is_refusal": false,
+      "is_stale": false,
+      "contexts": [
+        {
+          "chunk_id": "faq:faq/common.json#1:0",
+          "title": "报表导出链接多久过期？",
+          "source_type": "faq",
+          "content": "Q: 报表导出链接多久过期？\nA: 导出链接默认有效期为 24 小时。过期后需要重新进入报表页面点击导出。",
+          "score": 0.031099324975891997
+        },
+        {
+          "chunk_id": "ticket:tickets/tickets.csv#row_0:0",
+          "title": "工单 #T2026050101",
+          "source_type": "ticket",
+          "content": "ticket_id: T2026050101\ntitle: 报表下载后打不开\ncontent: 客户反馈在 Chrome 浏览器下载报表后，双击文件提示无法打开。经排查为下载过程中网络中断，文件大小只有正常的一半。重新导出后解决。\nupdated_at: 2026-05-01",
+          "score": 0.030834914611005692
+        },
+        {
+          "chunk_id": "faq:faq/common.json#2:0",
+          "title": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+          "source_type": "faq",
+          "content": "Q: 客户用旧版 Office 打不开 Excel 导出文件怎么办？\nA: 建议客户升级 Office 到 2007 或更高版本，或者在导出时选择 CSV 格式。CSV 兼容所有版本的 Excel。",
+          "score": 0.030798389007344232
+        },
+        {
+          "chunk_id": "help_doc:help_docs/export-guide.md:0",
+          "title": "报表导出与下载指南",
+          "source_type": "help_doc",
+          "content": "# 报表导出与下载指南\n\nCloudBrief 支持将数据报表导出为 CSV、Excel 和 PDF 三种格式，方便客户离线查看。\n\n## 支持的导出格式\n\n- CSV：兼容性好，文件小，适合大数据量。\n- Excel（.xlsx）：保留样式和公式，适合需要二次编辑的场景。\n- PDF：固定版式，适合打印和归档。\n\n## 导出操作步骤\n\n1. 进入「数据报表」页面。\n2. 选择时间范围和筛选条件。\n3. 点击右上角「导出」按钮。\n4. 选择格式并确认下载。\n\n## 常见问题\n\n### 报表导出后无法打开怎么办？\n\n如果客户反馈导出文件无法打开，请按以下顺序排查：\n\n1. 确认文件是否完整下载。网络中断可能导致文件损坏，建议重新导出。\n2. 检查文件格式与本地软件版本是否匹配。例如 Excel 2003 及更早版本默认无法打开 .xlsx 文件，可让客户升级 Office 或改用 CSV 格式。\n3. 如果数据量超过 10 万行，Excel 格式可能触发性能限制，建议拆分为多个时间段导出或使用 CSV 格式。\n4. 查看是否包含特殊字符导致编码错误。CSV 默认使用 UTF-8，部分旧版 Excel 打开时会乱码，可提示客户使用「数据导入」功能选择 UTF-8 编码。\n\n### 导出为 Excel 格式时报错？\n\n当导出为 Excel 格式失败时，常见原因包括：\n\n- 报表中包含超过 32767 个字符的单元格内容（Excel 单单元格上限）。\n- 使用了特殊公式或函数，在生成 Excel 时解析失败。\n- 服务器临时文件目录空间不足。\n\n解决方案：先尝试导出 CSV 验证数据完整性；若 CSV 正常，则拆分数据或缩短时间范围后重试 Excel 导出。\n\n## 注意事项\n\n- 导出任务为异步执行，大文件可能需要几分钟。\n- 导出链接有效期为 24 小时，过期后需要重新生成。",
+          "score": 0.030776515151515152
+        },
+        {
+          "chunk_id": "help_doc:help_docs/getting-started.md:0",
+          "title": "快速入门",
+          "source_type": "help_doc",
+          "content": "# 快速入门\n\n欢迎使用 CloudBrief。本文档帮助新客服快速上手。\n\n## 登录与首页\n\n使用企业邮箱登录支持工作台。首页展示待处理工单、知识库快捷入口和最近更新。\n\n## 处理工单流程\n\n1. 查看客户问题\n2. 在副驾中搜索相关知识\n3. 核对引用来源后回复客户\n4. 标记工单解决状态\n\n## 常用快捷键\n\n- `Cmd + K` 打开副驾搜索\n- `Esc` 关闭弹窗\n- `Shift + R` 标记已解决",
+          "score": 0.03076923076923077
+        }
+      ],
+      "scores": {
+        "hit_rate": 0.0,
+        "citation_accuracy": 1.0,
+        "refusal_accuracy": false,
+        "stale_accuracy": true,
+        "context_relevance": 0.0,
+        "context_precision": 0.0,
+        "context_recall": 1.0,
+        "faithfulness": 0.0,
+        "answer_relevance": 0.0,
+        "latency_ms": 4177
+      },
+      "expected_chunk_ids": []
+    }
+  ]
+}

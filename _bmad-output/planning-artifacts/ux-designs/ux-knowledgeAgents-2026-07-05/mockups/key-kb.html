@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>知识库管理 - CloudBrief Admin</title>
+  <style>
+    /* Governs: DESIGN.md Components (Sidebar, Topbar, Card, Button, Status Badge); EXPERIENCE.md Information Architecture, Component Patterns */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Inter, system-ui, sans-serif; background: #F8FAFC; color: #0F172A; font-size: 14px; line-height: 1.5; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: #fff; border-right: 1px solid #E2E8F0; display: flex; flex-direction: column; }
+    .sidebar-header { padding: 16px; border-bottom: 1px solid #E2E8F0; font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+    .sidebar-menu { flex: 1; padding: 12px; }
+    .menu-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 6px; color: #64748B; cursor: pointer; margin-bottom: 4px; }
+    .menu-item:hover { background: #F1F5F9; }
+    .menu-item.active { background: #F1F5F9; color: #2563EB; border-left: 2px solid #2563EB; margin-left: -2px; }
+    .sidebar-footer { padding: 12px; border-top: 1px solid #E2E8F0; }
+    .user-mini { display: flex; align-items: center; gap: 10px; }
+    .avatar { width: 32px; height: 32px; border-radius: 50%; background: #2563EB; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; }
+    .main { flex: 1; display: flex; flex-direction: column; }
+    .topbar { height: 56px; background: #fff; border-bottom: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; }
+    .topbar h1 { font-size: 20px; font-weight: 600; }
+    .content { padding: 24px; overflow-y: auto; }
+    .two-col { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+    .card { background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .card-header { padding: 16px; border-bottom: 1px solid #E2E8F0; display: flex; justify-content: space-between; align-items: center; }
+    .card-title { font-weight: 600; }
+    .card-body { padding: 16px; }
+    .btn { padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; }
+    .btn-primary { background: #2563EB; color: #fff; }
+    .btn-secondary { background: #fff; color: #0F172A; border: 1px solid #E2E8F0; }
+    .btn-destructive { background: #EF4444; color: #fff; }
+    .tree-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+    .tree-item:hover { background: #F8FAFC; }
+    .tree-item.active { background: #EFF6FF; color: #2563EB; }
+    .tree-children { margin-left: 20px; border-left: 1px solid #E2E8F0; padding-left: 8px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 10px 12px; background: #F1F5F9; color: #64748B; font-size: 12px; font-weight: 500; }
+    td { padding: 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .icon-btn { width: 28px; height: 28px; border-radius: 6px; border: none; background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .icon-btn:hover { background: #F1F5F9; }
+    .progress-panel { margin-top: 16px; padding: 16px; background: #F8FAFC; border-radius: 6px; }
+    .progress-step { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+    .step-dot { width: 8px; height: 8px; border-radius: 50%; background: #10B981; }
+    .step-dot.pending { background: #E2E8F0; }
+    .step-name { flex: 1; }
+    .step-status { font-size: 12px; color: #64748B; }
+    .dropzone { border: 2px dashed #E2E8F0; border-radius: 6px; padding: 32px; text-align: center; color: #64748B; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span>☁️</span> CloudBrief Admin
+      </div>
+      <nav class="sidebar-menu">
+        <div class="menu-item">📊 Dashboard</div>
+        <div class="menu-item">⚙️ 系统设置</div>
+        <div class="menu-item">👥 用户管理</div>
+        <div class="menu-item">💬 聊天助手</div>
+        <div class="menu-item active">📁 知识库管理</div>
+        <div class="menu-item">🎯 RAGAS 评测审计</div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-mini">
+          <div class="avatar">王</div>
+          <div>
+            <div style="font-weight:500;">老王</div>
+            <div style="font-size:12px;color:#64748B;">admin</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1>知识库管理</h1>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div class="avatar">王</div>
+        </div>
+      </header>
+      <main class="content">
+        <div class="two-col">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">目录</span>
+              <button class="btn btn-secondary">+ 新建</button>
+            </div>
+            <div class="card-body">
+              <div class="tree-item active">
+                <span>📂</span> 产品更新
+              </div>
+              <div class="tree-children">
+                <div class="tree-item">
+                  <span>📄</span> changelog_q3.json
+                </div>
+                <div class="tree-item">
+                  <span>📄</span> faq_q3.md
+                </div>
+              </div>
+              <div class="tree-item">
+                <span>📁</span> 帮助文档
+              </div>
+              <div class="tree-item">
+                <span>📁</span> 历史工单
+              </div>
+              <div class="tree-item">
+                <span>📁</span> 内部 FAQ
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">产品更新 / 文件</span>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-secondary">上传文件</button>
+                <button class="btn btn-primary">整合重建索引</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="dropzone">
+                拖拽文件到此处，或点击上传
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>文件名</th>
+                    <th>来源类型</th>
+                    <th>大小</th>
+                    <th>更新时间</th>
+                    <th style="text-align:right;">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>changelog_q3.json</td>
+                    <td>changelog</td>
+                    <td>12 KB</td>
+                    <td>2026-07-04 10:00</td>
+                    <td style="text-align:right;"><button class="icon-btn">🗑️</button></td>
+                  </tr>
+                  <tr>
+                    <td>faq_q3.md</td>
+                    <td>faq</td>
+                    <td>8 KB</td>
+                    <td>2026-07-04 10:05</td>
+                    <td style="text-align:right;"><button class="icon-btn">🗑️</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="progress-panel">
+                <div style="font-weight:600;margin-bottom:12px;">索引重建进度</div>
+                <div class="progress-step">
+                  <div class="step-dot"></div>
+                  <div class="step-name">解析知识源</div>
+                  <div class="step-status">已完成 · 120ms</div>
+                </div>
+                <div class="progress-step">
+                  <div class="step-dot"></div>
+                  <div class="step-name">文本切分</div>
+                  <div class="step-status">已完成 · 80ms</div>
+                </div>
+                <div class="progress-step">
+                  <div class="step-dot"></div>
+                  <div class="step-name">生成 Embedding</div>
+                  <div class="step-status">已完成 · 4.2s</div>
+                </div>
+                <div class="progress-step">
+                  <div class="step-dot pending"></div>
+                  <div class="step-name">写入向量库</div>
+                  <div class="step-status">等待中</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

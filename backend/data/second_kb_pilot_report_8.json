@@ -1,0 +1,254 @@
+{
+  "directory_id": 8,
+  "file_id": 22,
+  "schema": {
+    "entity_types": [
+      "人员",
+      "部门",
+      "产品",
+      "供应商",
+      "项目"
+    ],
+    "relation_types": [
+      "汇报给",
+      "负责",
+      "参与",
+      "依赖",
+      "协作"
+    ]
+  },
+  "graph_build": {
+    "kb_id": "8",
+    "skipped": true,
+    "note": "skip_build mode"
+  },
+  "summary": {
+    "vector_entity_recall": 0.8,
+    "vector_relation_recall": 0.45,
+    "graph_entity_recall": 0.8,
+    "graph_relation_recall": 0.55,
+    "question_count": 10
+  },
+  "detailed": [
+    {
+      "question": "CloudBrief 的 CEO 是谁？她直接管理哪些部门负责人？",
+      "needs_graph": true,
+      "vector_answer": "CloudBrief 的 CEO 是韩梅梅 [^1]。她直接管理以下三位部门负责人 [^1]：\n\n- **产品研发部**负责人：李雷 [^1]\n- **供应链管理部**负责人：张伟 [^1]\n- **客户成功部**负责人：王芳 [^1]",
+      "graph_answer": "CloudBrief 的 CEO 是韩梅梅 [^1]。\n\n她直接管理以下三位部门负责人 [^1]：\n- **产品研发部**负责人：李雷 [^1]\n- **供应链管理部**负责人：张伟 [^1]\n- **客户成功部**负责人：王芳 [^1]",
+      "vector_metrics": {
+        "entity_recall": 1.0,
+        "relation_recall": 1.0,
+        "entity_hits": 4,
+        "entity_total": 4,
+        "relation_hits": 3,
+        "relation_total": 3
+      },
+      "graph_metrics": {
+        "entity_recall": 1.0,
+        "relation_recall": 1.0,
+        "entity_hits": 4,
+        "entity_total": 4,
+        "relation_hits": 3,
+        "relation_total": 3
+      }
+    },
+    {
+      "question": "知识库产品的技术负责人是谁？",
+      "needs_graph": false,
+      "vector_answer": "知识库产品的技术负责人是赵敏 [^1]。",
+      "graph_answer": "CloudBrief 知识库（KB）产品的技术负责人是赵敏 [^1]。",
+      "vector_metrics": {
+        "entity_recall": 1.0,
+        "relation_recall": 0.0,
+        "entity_hits": 1,
+        "entity_total": 1,
+        "relation_hits": 0,
+        "relation_total": 1
+      },
+      "graph_metrics": {
+        "entity_recall": 1.0,
+        "relation_recall": 1.0,
+        "entity_hits": 1,
+        "entity_total": 1,
+        "relation_hits": 1,
+        "relation_total": 1
+      }
+    },
+    {
+      "question": "哪些项目依赖 DashScope？",
+      "needs_graph": true,
+      "vector_answer": "根据当前知识库，依赖 DashScope 的项目如下：\n\n- **项目 Alpha（知识库 GraphRAG 增强）**：依赖 DashScope 作为抽取模型 [^1]。\n- **项目 Beta（智能客服多模态升级）**：依赖 DashScope 进行对话生成 [^2]。",
+      "graph_answer": "根据当前知识库，依赖 DashScope 的项目包括：\n\n1. **项目 Alpha（知识库 GraphRAG 增强）**：依赖 DashScope 作为抽取模型 [^1]。\n2. **项目 Beta（智能客服多模态升级）**：依赖 DashScope 进行对话生成 [^2]。",
+      "vector_metrics": {
+        "entity_recall": 0.5,
+        "relation_recall": 0.0,
+        "entity_hits": 2,
+        "entity_total": 4,
+        "relation_hits": 0,
+        "relation_total": 2
+      },
+      "graph_metrics": {
+        "entity_recall": 0.5,
+        "relation_recall": 0.0,
+        "entity_hits": 2,
+        "entity_total": 4,
+        "relation_hits": 0,
+        "relation_total": 2
+      }
+    },
+    {
+      "question": "项目 Gamma 的项目经理是谁？参与部门有哪些？",
+      "needs_graph": true,
+      "vector_answer": "根据当前知识库，项目 Gamma 的相关信息如下：\n\n- **项目经理**：陈静 [^1]。\n- **参与部门**：供应链管理部、产品研发部 [^1]。",
+      "graph_answer": "根据当前知识库，项目 Gamma 的相关信息如下：\n\n- **项目经理**：陈静 [^1]\n- **参与部门**：供应链管理部、产品研发部 [^1]",
+      "vector_metrics": {
+        "entity_recall": 1.0,
+        "relation_recall": 1.0,
+        "entity_hits": 3,
+        "entity_total": 3,
+        "relation_hits": 1,
+        "relation_total": 1
+      },
+      "graph_metrics": {
+        "entity_recall": 1.0,
+        "relation_recall": 1.0,
+        "entity_hits": 3,
+        "entity_total": 3,
+        "relation_hits": 1,
+        "relation_total": 1
+      }
+    },
+    {
+      "question": "陈静在哪些项目中担任角色？",
+      "needs_graph": true,
+      "vector_answer": "根据当前知识库，陈静在以下项目中担任角色：\n\n- **项目 Gamma（数据平台实时化）**：担任该项目的项目经理 [^1]，并参与该项目的技术架构评审 [^1]。",
+      "graph_answer": "根据当前知识库，陈静在以下项目中担任角色：\n\n- **项目 Gamma（数据平台实时化）**：担任该项目的项目经理 [^1]。此外，她还与赵敏共同参与该项目的技术架构评审 [^1]。",
+      "vector_metrics": {
+        "entity_recall": 0.6666666666666666,
+        "relation_recall": 0.5,
+        "entity_hits": 2,
+        "entity_total": 3,
+        "relation_hits": 1,
+        "relation_total": 2
+      },
+      "graph_metrics": {
+        "entity_recall": 0.6666666666666666,
+        "relation_recall": 0.5,
+        "entity_hits": 2,
+        "entity_total": 3,
+        "relation_hits": 1,
+        "relation_total": 2
+      }
+    },
+    {
+      "question": "智能客服产品依赖哪些供应商？",
+      "needs_graph": true,
+      "vector_answer": "根据当前知识库，智能客服（CS）产品依赖以下供应商：\n\n- **DashScope**：提供大模型对话服务 [^1]。\n- **讯飞星火**：提供语音转文字服务 [^1]。",
+      "graph_answer": "智能客服（CS）产品依赖以下供应商：\n\n- **DashScope**：提供大模型对话服务 [^1]。\n- **讯飞星火**：提供语音转文字服务 [^1]。",
+      "vector_metrics": {
+        "entity_recall": 0.6666666666666666,
+        "relation_recall": 0.0,
+        "entity_hits": 2,
+        "entity_total": 3,
+        "relation_hits": 0,
+        "relation_total": 2
+      },
+      "graph_metrics": {
+        "entity_recall": 0.6666666666666666,
+        "relation_recall": 0.0,
+        "entity_hits": 2,
+        "entity_total": 3,
+        "relation_hits": 0,
+        "relation_total": 2
+      }
+    },
+    {
+      "question": "刘洋和哪位同事共同参与 Beta 项目？",
+      "needs_graph": true,
+      "vector_answer": "根据当前知识库，刘洋与以下同事及部门共同参与 Beta 项目：\n\n- **赵敏**：刘洋与赵敏共同参与 Beta 项目的多模态方案设计 [^1]。\n- **客户成功部**与**产品研发部**：这两个部门同为 Beta 项目的参与方 [^1]。",
+      "graph_answer": "根据当前知识库，与刘洋共同参与 Beta 项目的同事主要包括：\n\n- **赵敏**：与刘洋共同参与 Beta 项目的多模态方案设计 [^1]。\n- **李雷**：负责协调产品研发部对 Beta 项目的技术支持 [^1]。\n- **王芳**：负责协调客户成功部对 Beta 项目的客户需求输入 [^1]。",
+      "vector_metrics": {
+        "entity_recall": 0.6666666666666666,
+        "relation_recall": 0.0,
+        "entity_hits": 2,
+        "entity_total": 3,
+        "relation_hits": 0,
+        "relation_total": 2
+      },
+      "graph_metrics": {
+        "entity_recall": 0.6666666666666666,
+        "relation_recall": 0.0,
+        "entity_hits": 2,
+        "entity_total": 3,
+        "relation_hits": 0,
+        "relation_total": 2
+      }
+    },
+    {
+      "question": "数据分析平台使用哪家云服务商？",
+      "needs_graph": false,
+      "vector_answer": "根据当前知识库，数据分析平台（DA）使用的云服务商及相关供应商情况如下：\n\n- **云服务商**：云存储与计算资源由 **阿里云** 提供 [^1]。\n- **其他供应商**：BI 可视化组件由 **帆软** 提供 [^1]。",
+      "graph_answer": "根据提供的证据，数据分析平台（DA）的供应商情况如下：\n\n- **云服务商**：云存储与计算资源由 **阿里云** 提供 [^1]。\n- **其他组件供应商**：BI 可视化组件由 **帆软** 提供 [^1]。",
+      "vector_metrics": {
+        "entity_recall": 0.5,
+        "relation_recall": 0.0,
+        "entity_hits": 1,
+        "entity_total": 2,
+        "relation_hits": 0,
+        "relation_total": 1
+      },
+      "graph_metrics": {
+        "entity_recall": 0.5,
+        "relation_recall": 0.0,
+        "entity_hits": 1,
+        "entity_total": 2,
+        "relation_hits": 0,
+        "relation_total": 1
+      }
+    },
+    {
+      "question": "哪些产品由同一个人兼任产品负责人？请说明具体是谁。",
+      "needs_graph": true,
+      "vector_answer": "根据证据，CloudBrief 的三条主要产品线的产品负责人均由各部门负责人兼任，具体产品如下：\n\n1. **CloudBrief 知识库（KB）**：产品负责人李雷兼任产品研发部负责人 [^1]。\n2. **CloudBrief 智能客服（CS）**：产品负责人王芳兼任客户成功部负责人 [^1]。\n3. **CloudBrief 数据分析平台（DA）**：产品负责人张伟兼任供应链管理部负责人 [^2]。\n\n（注：证据中未显示有同一个人兼任多个不同产品的产品负责人，上述为各产品负责人兼任部门负责人的情况。）",
+      "graph_answer": "根据证据，公司三条主要产品线的产品负责人均兼任了相关部门的负责人，具体人员及兼任情况如下：\n\n- **CloudBrief 知识库（KB）**：产品负责人为 **李雷**，他兼任产品研发部负责人 [^1]。\n- **CloudBrief 智能客服（CS）**：产品负责人为 **王芳**，她兼任客户成功部负责人 [^1]。\n- **CloudBrief 数据分析平台（DA）**：产品负责人为 **张伟**，他兼任供应链管理部负责人 [^2]。\n\n*(注：若问题是指“同一个人兼任多个不同产品的产品负责人”，则根据当前知识库，我找不到足够信息回答这个问题，因为三款产品的负责人分别为李雷、王芳和张伟。)*",
+      "vector_metrics": {
+        "entity_recall": 1.0,
+        "relation_recall": 1.0,
+        "entity_hits": 6,
+        "entity_total": 6,
+        "relation_hits": 0,
+        "relation_total": 0
+      },
+      "graph_metrics": {
+        "entity_recall": 1.0,
+        "relation_recall": 1.0,
+        "entity_hits": 6,
+        "entity_total": 6,
+        "relation_hits": 0,
+        "relation_total": 0
+      }
+    },
+    {
+      "question": "项目 Alpha 的预计上线时间是什么时候？",
+      "needs_graph": false,
+      "vector_answer": "项目 Alpha 的预计上线时间是 2026 年 8 月（2026-08）[^1]。",
+      "graph_answer": "- 项目 Alpha 的预计上线时间为 2026-08 [^1]。",
+      "vector_metrics": {
+        "entity_recall": 1.0,
+        "relation_recall": 1.0,
+        "entity_hits": 1,
+        "entity_total": 1,
+        "relation_hits": 0,
+        "relation_total": 0
+      },
+      "graph_metrics": {
+        "entity_recall": 1.0,
+        "relation_recall": 1.0,
+        "entity_hits": 1,
+        "entity_total": 1,
+        "relation_hits": 0,
+        "relation_total": 0
+      }
+    }
+  ]
+}

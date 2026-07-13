@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>评测详情 - CloudBrief Admin</title>
+  <style>
+    /* Governs: DESIGN.md Components (Sidebar, Topbar, Card, Button, Badge); EXPERIENCE.md Information Architecture, Component Patterns, State Patterns */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Inter, system-ui, sans-serif; background: #F8FAFC; color: #0F172A; font-size: 14px; line-height: 1.5; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: #fff; border-right: 1px solid #E2E8F0; display: flex; flex-direction: column; }
+    .sidebar-header { padding: 16px; border-bottom: 1px solid #E2E8F0; font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+    .sidebar-menu { flex: 1; padding: 12px; }
+    .menu-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 6px; color: #64748B; cursor: pointer; margin-bottom: 4px; }
+    .menu-item:hover { background: #F1F5F9; }
+    .menu-item.active { background: #F1F5F9; color: #2563EB; border-left: 2px solid #2563EB; margin-left: -2px; }
+    .sidebar-footer { padding: 12px; border-top: 1px solid #E2E8F0; }
+    .user-mini { display: flex; align-items: center; gap: 10px; }
+    .avatar { width: 32px; height: 32px; border-radius: 50%; background: #F59E0B; color: #1A1208; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; }
+    .main { flex: 1; display: flex; flex-direction: column; }
+    .topbar { height: 56px; background: #fff; border-bottom: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; }
+    .topbar h1 { font-size: 20px; font-weight: 600; }
+    .content { padding: 24px; overflow-y: auto; }
+    .breadcrumb { color: #64748B; font-size: 12px; margin-bottom: 16px; }
+    .two-col { display: grid; grid-template-columns: 1fr 360px; gap: 16px; }
+    .card { background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 16px; }
+    .card-header { padding: 16px; border-bottom: 1px solid #E2E8F0; font-weight: 600; }
+    .card-body { padding: 16px; }
+    .section-label { font-size: 12px; color: #64748B; font-weight: 500; margin-bottom: 6px; text-transform: uppercase; }
+    .section-content { margin-bottom: 16px; }
+    .section-content:last-child { margin-bottom: 0; }
+    .context-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+    .context-card.relevant { border-left: 3px solid #10B981; }
+    .context-card.irrelevant { border-left: 3px solid #EF4444; }
+    .context-meta { font-size: 12px; color: #64748B; margin-top: 6px; }
+    .score-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .score-item { background: #F8FAFC; border-radius: 6px; padding: 12px; text-align: center; }
+    .score-value { font-size: 20px; font-weight: 600; }
+    .score-value.low { color: #EF4444; }
+    .score-label { font-size: 11px; color: #64748B; margin-top: 4px; }
+    .btn { padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; }
+    .btn-primary { background: #2563EB; color: #fff; width: 100%; }
+    .btn-secondary { background: #fff; color: #0F172A; border: 1px solid #E2E8F0; }
+    .form-group { margin-bottom: 14px; }
+    .form-label { display: block; font-size: 12px; font-weight: 500; margin-bottom: 4px; }
+    .input, .select, .textarea { width: 100%; padding: 8px 10px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 13px; }
+    .textarea { min-height: 80px; resize: vertical; }
+    .checkbox-group { display: flex; gap: 16px; margin-top: 8px; }
+    .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 500; }
+    .badge-warning { background: #FEF3C7; color: #92400E; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span>☁️</span> CloudBrief Admin
+      </div>
+      <nav class="sidebar-menu">
+        <div class="menu-item">📊 Dashboard</div>
+        <div class="menu-item">⚙️ 系统设置</div>
+        <div class="menu-item">👥 用户管理</div>
+        <div class="menu-item">💬 聊天助手</div>
+        <div class="menu-item">📁 知识库管理</div>
+        <div class="menu-item active">🎯 RAGAS 评测审计</div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-mini">
+          <div class="avatar">张</div>
+          <div>
+            <div style="font-weight:500;">张姐</div>
+            <div style="font-size:12px;color:#64748B;">qa</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1>评测详情 #42</h1>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="btn btn-secondary">导出</button>
+          <div class="avatar">张</div>
+        </div>
+      </header>
+      <main class="content">
+        <div class="breadcrumb">RAGAS 评测审计 / 详情 #42</div>
+        <div class="two-col">
+          <div>
+            <div class="card">
+              <div class="card-header">问题与答案</div>
+              <div class="card-body">
+                <div class="section-label">Question</div>
+                <div class="section-content">报表导出后无法打开怎么办？</div>
+
+                <div class="section-label">Ground Truth</div>
+                <div class="section-content">请检查导出格式是否为受支持的格式（CSV/Excel/PDF），尝试重新导出。如仍无法打开，请确认本地办公软件版本是否兼容，或联系技术支持。</div>
+
+                <div class="section-label">System Answer</div>
+                <div class="section-content">
+                  报表无法打开时，请先确认导出格式是否受支持[^1]。如果格式正确，尝试重新导出一次[^2]。若仍有问题，可能是本地软件版本不兼容。
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">检索到的片段</div>
+              <div class="card-body">
+                <div class="context-card relevant">
+                  <div>导出报表时，请从"报表中心"选择目标报表，点击"导出"按钮。支持的格式包括 CSV、Excel 和 PDF。如导出后无法打开，请检查文件扩展名是否正确。</div>
+                  <div class="context-meta">来源：帮助文档 · 导出功能指南 · 2026-06-01 · RAGAS: relevant</div>
+                </div>
+                <div class="context-card relevant">
+                  <div>如果报表导出后无法打开，建议先尝试重新导出。若问题持续，请确认本地 Office/WPS 版本是否支持该格式。</div>
+                  <div class="context-meta">来源：内部 FAQ · 报表导出 FAQ · 2026-05-20 · RAGAS: relevant</div>
+                </div>
+                <div class="context-card irrelevant">
+                  <div>用户可以在"个人设置"中修改密码和安全问题。修改后需要重新登录才能生效。</div>
+                  <div class="context-meta">来源：帮助文档 · 账号设置 · 2026-04-10 · RAGAS: irrelevant</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">RAGAS Reasoning</div>
+              <div class="card-body" style="color:#64748B;font-size:13px;">
+                Faithfulness 判定：系统答案声称"重新导出"和"检查格式"均能在检索片段中找到依据，但未提及"联系技术支持"这一 Ground Truth 中的关键步骤，因此扣减分数。
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card">
+              <div class="card-header">RAGAS 指标</div>
+              <div class="card-body">
+                <div class="score-grid">
+                  <div class="score-item">
+                    <div class="score-value">0.80</div>
+                    <div class="score-label">Context Precision</div>
+                  </div>
+                  <div class="score-item">
+                    <div class="score-value">0.75</div>
+                    <div class="score-label">Context Recall</div>
+                  </div>
+                  <div class="score-item">
+                    <div class="score-value low">0.65</div>
+                    <div class="score-label">Faithfulness</div>
+                  </div>
+                  <div class="score-item">
+                    <div class="score-value">0.88</div>
+                    <div class="score-label">Answer Relevance</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">人工复核</div>
+              <div class="card-body">
+                <div class="form-group">
+                  <label class="form-label">人工评分（1-5）</label>
+                  <select class="select">
+                    <option>请选择</option>
+                    <option selected>3</option>
+                    <option>4</option>
+                    <option>5</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">备注</label>
+                  <textarea class="textarea">答案遗漏了关键步骤 4：联系技术支持。</textarea>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">标记</label>
+                  <div class="checkbox-group">
+                    <label><input type="checkbox"> 被采用</label>
+                    <label><input type="checkbox" checked> 需修改</label>
+                  </div>
+                </div>
+                <button class="btn btn-primary">保存反馈</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

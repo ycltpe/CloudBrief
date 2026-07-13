@@ -1,0 +1,92 @@
+[
+  {
+    "id": "eval-001",
+    "question": "报表导出后无法打开怎么办？",
+    "expected_answer_points": ["重新导出", "检查格式兼容性", "CSV", "Excel"],
+    "expected_chunk_ids": ["help_doc:help_docs/export-guide.md:0"],
+    "should_refuse": false,
+    "should_stale": false,
+    "category": "help_doc"
+  },
+  {
+    "id": "eval-002",
+    "question": "客户用旧版 Office 打不开 Excel 导出文件怎么办？",
+    "expected_answer_points": ["升级 Office", "CSV 格式"],
+    "expected_chunk_ids": ["faq:faq/common.json#2:0"],
+    "should_refuse": false,
+    "should_stale": false,
+    "category": "faq"
+  },
+  {
+    "id": "eval-003",
+    "question": "v1.2.0 对报表导出做了什么优化？",
+    "expected_answer_points": ["Excel 兼容性提示", "大文件拆分"],
+    "expected_chunk_ids": ["changelog:changelog/v1.2.0.json#0:0", "changelog:changelog/v1.2.0.json#1:0"],
+    "should_refuse": false,
+    "should_stale": false,
+    "category": "changelog"
+  },
+  {
+    "id": "eval-004",
+    "question": "工单 T2026050101 的问题原因是什么？",
+    "expected_answer_points": ["网络中断", "文件损坏", "重新导出"],
+    "expected_chunk_ids": ["ticket:tickets/tickets.csv#row_0:0"],
+    "should_refuse": false,
+    "should_stale": false,
+    "category": "ticket"
+  },
+  {
+    "id": "eval-005",
+    "question": "报表导出链接多久过期？",
+    "expected_answer_points": ["24 小时"],
+    "expected_chunk_ids": ["faq:faq/common.json#1:0"],
+    "should_refuse": false,
+    "should_stale": false,
+    "category": "faq"
+  },
+  {
+    "id": "eval-006",
+    "question": "CloudBrief 的创始人是谁？",
+    "expected_answer_points": [],
+    "expected_chunk_ids": [],
+    "should_refuse": true,
+    "should_stale": false,
+    "category": "out_of_scope"
+  },
+  {
+    "id": "eval-007",
+    "question": "导出为 Excel 格式时报错怎么排查？",
+    "expected_answer_points": ["单元格内容超限", "公式解析失败", "服务器空间不足", "CSV"],
+    "expected_chunk_ids": ["help_doc:help_docs/export-guide.md:0"],
+    "should_refuse": false,
+    "should_stale": false,
+    "category": "help_doc"
+  },
+  {
+    "id": "eval-008",
+    "question": "如何重置登录密码？",
+    "expected_answer_points": ["忘记密码", "企业邮箱", "重置链接", "15 分钟"],
+    "expected_chunk_ids": ["faq:faq/common.json#0:0"],
+    "should_refuse": false,
+    "should_stale": false,
+    "category": "faq"
+  },
+  {
+    "id": "eval-009",
+    "question": "CSV 文件用 Excel 打开乱码怎么办？",
+    "expected_answer_points": ["UTF-8", "数据导入"],
+    "expected_chunk_ids": ["help_doc:help_docs/export-guide.md:0"],
+    "should_refuse": false,
+    "should_stale": false,
+    "category": "help_doc"
+  },
+  {
+    "id": "eval-010",
+    "question": "我们公司今年的营收是多少？",
+    "expected_answer_points": [],
+    "expected_chunk_ids": [],
+    "should_refuse": true,
+    "should_stale": false,
+    "category": "out_of_scope"
+  }
+]

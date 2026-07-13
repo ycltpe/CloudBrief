@@ -202,3 +202,26 @@ export interface AdminDashboardResponse {
   graph_rag_status: DashboardGraphRagStatus;
   system_health: DashboardSystemHealth;
 }
+
+export interface DashboardStatsResponse {
+  user_count: number;
+  conversation_count_today: number;
+  index_status: DashboardIndexStatus;
+  latest_eval_scores: DashboardEvalScores;
+}
+
+export interface DashboardEvalScoresResponse {
+  latest_eval_scores: DashboardEvalScores;
+}
+
+export interface DashboardRecentTasksResponse {
+  recent_tasks: DashboardRecentTask[];
+}
+
+export interface DashboardGraphRagResponse {
+  graph_rag_status: DashboardGraphRagStatus;
+}
+
+export interface DashboardSystemHealthResponse {
+  system_health: DashboardSystemHealth;
+}

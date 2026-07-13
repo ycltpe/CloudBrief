@@ -3,7 +3,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.models.schemas import DashboardSystemHealth
+from app.models.schemas import (
+    DashboardEvalScores,
+    DashboardGraphRagStatus,
+    DashboardIndexStatus,
+    DashboardRecentTask,
+    DashboardSystemHealth,
+)
 from app.services.dashboard_service import DashboardService
 
 
@@ -223,6 +229,80 @@ def test_get_dashboard_passes_graph_store(service, graph_store):
         mock_milvus.return_value = mock_milvus_client
 
         result = service.get_dashboard(graph_store=graph_store)
+
+    assert result.system_health.status == "healthy"
+    assert len(result.system_health.dependencies) == 6
+
+
+def test_get_stats_returns_aggregated_counts(service):
+    service.user_store.count.return_value = 10
+    service.conversation_store.count_today.return_value = 5
+    service.index_service.get_recent_tasks.return_value = []
+    service.eval_store.get_latest_scores.return_value = {}
+
+    result = service.get_stats()
+
+    assert result.user_count == 10
+    assert result.conversation_count_today == 5
+    assert isinstance(result.index_status, DashboardIndexStatus)
+    assert isinstance(result.latest_eval_scores, DashboardEvalScores)
+
+
+def test_get_eval_scores_returns_latest_scores(service):
+    service.eval_store.get_latest_scores.return_value = {
+        "context_precision": 0.8,
+        "context_recall": 0.75,
+        "faithfulness": 0.9,
+        "answer_relevancy": 0.85,
+    }
+
+    result = service.get_eval_scores()
+
+    assert result.latest_eval_scores.context_precision == 0.8
+    assert result.latest_eval_scores.context_recall == 0.75
+    assert result.latest_eval_scores.faithfulness == 0.9
+    assert result.latest_eval_scores.answer_relevancy == 0.85
+
+
+def test_get_recent_tasks_returns_tasks(service):
+    tasks = [
+        DashboardRecentTask(task_id="task-1", status="completed"),
+        DashboardRecentTask(task_id="task-2", status="running"),
+    ]
+    service.index_service.get_recent_tasks.return_value = tasks
+
+    result = service.get_recent_tasks()
+
+    assert result.recent_tasks == tasks
+
+
+def test_get_graph_rag_status_returns_default_on_failure(service):
+    service.graph_schema_store = MagicMock()
+    service.graph_schema_store.list_enabled.side_effect = RuntimeError("db error")
+
+    result = service.get_graph_rag_status()
+
+    assert isinstance(result.graph_rag_status, DashboardGraphRagStatus)
+
+
+def test_get_system_health_healthy(service, graph_store):
+    with patch("app.services.dashboard_service.get_engine") as mock_engine, \
+         patch("app.services.dashboard_service.redis.from_url") as mock_redis, \
+         patch("app.services.dashboard_service.MilvusClient") as mock_milvus:
+
+        mock_conn = MagicMock()
+        mock_engine.return_value.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_engine.return_value.connect.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_redis_client = MagicMock()
+        mock_redis_client.ping.return_value = True
+        mock_redis.return_value = mock_redis_client
+
+        mock_milvus_client = MagicMock()
+        mock_milvus_client.list_collections.return_value = ["c1"]
+        mock_milvus.return_value = mock_milvus_client
+
+        result = service.get_system_health(graph_store=graph_store)
 
     assert result.system_health.status == "healthy"
     assert len(result.system_health.dependencies) == 6

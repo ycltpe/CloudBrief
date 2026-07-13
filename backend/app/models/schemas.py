@@ -444,3 +444,26 @@ class AdminDashboardResponse(BaseModel):
     recent_tasks: list[DashboardRecentTask] = Field(default_factory=list)
     graph_rag_status: DashboardGraphRagStatus = Field(default_factory=DashboardGraphRagStatus)
     system_health: DashboardSystemHealth = Field(default_factory=DashboardSystemHealth)
+
+
+class DashboardStatsResponse(BaseModel):
+    user_count: int = 0
+    conversation_count_today: int = 0
+    index_status: DashboardIndexStatus = Field(default_factory=DashboardIndexStatus)
+    latest_eval_scores: DashboardEvalScores = Field(default_factory=DashboardEvalScores)
+
+
+class DashboardEvalScoresResponse(BaseModel):
+    latest_eval_scores: DashboardEvalScores = Field(default_factory=DashboardEvalScores)
+
+
+class DashboardRecentTasksResponse(BaseModel):
+    recent_tasks: list[DashboardRecentTask] = Field(default_factory=list)
+
+
+class DashboardGraphRagResponse(BaseModel):
+    graph_rag_status: DashboardGraphRagStatus = Field(default_factory=DashboardGraphRagStatus)
+
+
+class DashboardSystemHealthResponse(BaseModel):
+    system_health: DashboardSystemHealth = Field(default_factory=DashboardSystemHealth)

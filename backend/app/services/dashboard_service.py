@@ -14,10 +14,15 @@ from app.models.schemas import (
     AdminDashboardResponse,
     DashboardDependencyStatus,
     DashboardEvalScores,
+    DashboardEvalScoresResponse,
+    DashboardGraphRagResponse,
     DashboardGraphRagStatus,
     DashboardIndexStatus,
     DashboardRecentTask,
+    DashboardRecentTasksResponse,
+    DashboardStatsResponse,
     DashboardSystemHealth,
+    DashboardSystemHealthResponse,
 )
 from app.services.index_service import IndexService
 from app.stores.conversation import ConversationStore
@@ -74,6 +79,45 @@ class DashboardService:
             recent_tasks=recent_tasks,
             graph_rag_status=graph_rag_status,
             system_health=system_health,
+        )
+
+    def get_stats(self) -> DashboardStatsResponse:
+        user_count = self._safe_count(
+            "user_count", lambda: self.user_store.count()
+        )
+        conversation_count_today = self._safe_count(
+            "conversation_count_today",
+            lambda: self.conversation_store.count_today(),
+        )
+        index_status = self._safe_index_status()
+        latest_eval_scores = self._safe_latest_eval_scores()
+        return DashboardStatsResponse(
+            user_count=user_count,
+            conversation_count_today=conversation_count_today,
+            index_status=index_status,
+            latest_eval_scores=latest_eval_scores,
+        )
+
+    def get_eval_scores(self) -> DashboardEvalScoresResponse:
+        return DashboardEvalScoresResponse(
+            latest_eval_scores=self._safe_latest_eval_scores()
+        )
+
+    def get_recent_tasks(self) -> DashboardRecentTasksResponse:
+        return DashboardRecentTasksResponse(
+            recent_tasks=self._safe_recent_tasks()
+        )
+
+    def get_graph_rag_status(self) -> DashboardGraphRagResponse:
+        return DashboardGraphRagResponse(
+            graph_rag_status=self._safe_graph_rag_status()
+        )
+
+    def get_system_health(
+        self, graph_store: GraphStore | None = None
+    ) -> DashboardSystemHealthResponse:
+        return DashboardSystemHealthResponse(
+            system_health=self._safe_system_health(graph_store)
         )
 
     def _safe_count(self, name: str, func) -> int:

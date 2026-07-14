@@ -23,7 +23,7 @@ def service():
 
     celery_app = MagicMock()
     inspect = MagicMock()
-    inspect.active.return_value = {"worker@host": []}
+    inspect.ping.return_value = {"worker@host": {"ok": "pong"}}
     celery_app.control.inspect.return_value = inspect
 
     return DashboardService(
@@ -154,7 +154,7 @@ def test_system_health_degraded_when_no_active_index(service, graph_store):
 
 
 def test_system_health_celery_workers_unhealthy_when_no_workers(service, graph_store):
-    service.celery_app.control.inspect.return_value.active.return_value = None
+    service.celery_app.control.inspect.return_value.ping.return_value = None
 
     with patch("app.services.dashboard_service.get_engine") as mock_engine, \
          patch("app.services.dashboard_service.redis.from_url") as mock_redis, \

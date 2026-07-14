@@ -291,8 +291,7 @@ async def recommend_kb_graph_schema(
     model_client = ModelClient(settings)
     try:
         service = GraphExtractionService(model_client)
-        import asyncio
-        recommended = asyncio.run(service.recommend_schema(kb_chunks[:10], kb_id=str(directory_id)))
+        recommended = await service.recommend_schema(kb_chunks[:10], kb_id=str(directory_id))
     finally:
         await model_client.aclose()
 

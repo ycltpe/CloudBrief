@@ -57,7 +57,9 @@ class ChatService:
         if not kb_id or not self.graph_store or not self.graph_store.is_available:
             return None
         try:
-            schema = self.graph_schema_store.get_by_directory_id(int(kb_id))
+            schema = await asyncio.to_thread(
+                self.graph_schema_store.get_by_directory_id, int(kb_id)
+            )
             if not schema or not schema.enabled:
                 return None
             if not (schema.entity_types or schema.relation_types):
@@ -72,11 +74,13 @@ class ChatService:
             logger.warning("chat_fetch_graph_context_failed", kb_id=kb_id, error=str(exc))
         return None
 
-    def _is_shadow_mode_enabled(self, kb_id: str | None) -> bool:
+    async def _is_shadow_mode_enabled(self, kb_id: str | None) -> bool:
         if not kb_id:
             return False
         try:
-            schema = self.graph_schema_store.get_by_directory_id(int(kb_id))
+            schema = await asyncio.to_thread(
+                self.graph_schema_store.get_by_directory_id, int(kb_id)
+            )
             return bool(schema and schema.shadow_mode)
         except Exception:
             return False
@@ -90,7 +94,7 @@ class ChatService:
             return None
         return Counter(matches).most_common(1)[0][0]
 
-    def _resolve_kb_id(self, request: ChatRequest, current_user: UserOut | None) -> str:
+    async def _resolve_kb_id(self, request: ChatRequest, current_user: UserOut | None) -> str:
         """根据请求中的 kb_ids 与当前用户权限解析本次查询使用的知识库 id。
 
         2 周 MVP 仅支持单库查询；admin 可访问全部，普通用户仅能访问已授权库。
@@ -102,8 +106,10 @@ class ChatService:
             # 未指定时：admin 使用 default；普通用户使用其有权限的唯一库或 default
             if is_admin:
                 return "default"
-            accessible = self.kb_access_store.get_user_accessible_kb_ids(
-                current_user.id if current_user else 0, include_default=True
+            accessible = await asyncio.to_thread(
+                self.kb_access_store.get_user_accessible_kb_ids,
+                current_user.id if current_user else 0,
+                include_default=True,
             )
             return accessible[0] if len(accessible) == 1 else "default"
 
@@ -114,8 +120,12 @@ class ChatService:
         if selected == "default" or is_admin:
             return selected
 
-        if current_user and self.kb_access_store.check_access(selected, current_user.id):
-            return selected
+        if current_user:
+            has_access = await asyncio.to_thread(
+                self.kb_access_store.check_access, selected, current_user.id
+            )
+            if has_access:
+                return selected
 
         raise PermissionError(f"用户无权访问知识库 {selected}")
 
@@ -127,10 +137,13 @@ class ChatService:
         user_id = current_user.id if current_user else None
         received_at = datetime.utcnow()
         start_total = time.perf_counter()
-        conversation_id = request.conversation_id or self.conversation_store.create(
-            user_id=user_id,
-        )
-        kb_id = self._resolve_kb_id(request, current_user)
+        conversation_id = request.conversation_id
+        if not conversation_id:
+            conversation_id = await asyncio.to_thread(
+                self.conversation_store.create,
+                user_id=user_id,
+            )
+        kb_id = await self._resolve_kb_id(request, current_user)
 
         # 读取历史并改写查询
         start_rewrite = time.perf_counter()
@@ -170,9 +183,9 @@ class ChatService:
         latency_ms_total = int((time.perf_counter() - start_total) * 1000)
 
         # Shadow mode：在不影响最终答案的前提下记录 GraphRAG 候选答案
-        graphrag_enabled = bool(kb_id and self._is_shadow_mode_enabled(kb_id))
+        graphrag_enabled = bool(kb_id and await self._is_shadow_mode_enabled(kb_id))
         graphrag_used = False
-        if kb_id and self._is_shadow_mode_enabled(kb_id):
+        if kb_id and await self._is_shadow_mode_enabled(kb_id):
             try:
                 graph_context = await self._fetch_graph_context(request.question, kb_id)
                 graph_output = await self.generation_pipeline.generate(
@@ -187,7 +200,8 @@ class ChatService:
                     )
                 )
                 import json
-                self.graph_shadow_store.record(
+                await asyncio.to_thread(
+                    self.graph_shadow_store.record,
                     kb_id=kb_id,
                     user_id=user_id,
                     question=request.question,
@@ -200,29 +214,39 @@ class ChatService:
                 logger.warning("shadow_mode_record_failed", kb_id=kb_id, error=str(exc))
 
         # 保存消息
-        self.conversation_store.append_message(
+        await asyncio.to_thread(
+            self.conversation_store.append_message,
             conversation_id=conversation_id,
             role="user",
             content=request.question,
         )
 
         # 首次提问时初始化标题；旧数据无 user_id 时补录
-        conversation = self.conversation_store.get_conversation(conversation_id)
+        conversation = await asyncio.to_thread(
+            self.conversation_store.get_conversation, conversation_id
+        )
         if conversation:
             if user_id is not None and conversation.user_id is None:
-                self.conversation_store.update_user_id(conversation_id, user_id)
+                await asyncio.to_thread(
+                    self.conversation_store.update_user_id, conversation_id, user_id
+                )
             if not conversation.title:
                 default_title = request.question[:16]
-                self.conversation_store.update_title(conversation_id, default_title)
+                await asyncio.to_thread(
+                    self.conversation_store.update_title, conversation_id, default_title
+                )
 
-        self.conversation_store.append_message(
+        await asyncio.to_thread(
+            self.conversation_store.append_message,
             conversation_id=conversation_id,
             role="assistant",
             content=generation_output.answer,
             citations=generation_output.citations,
             is_refusal=generation_output.is_refusal,
         )
-        self.conversation_store.update_timestamp(conversation_id)
+        await asyncio.to_thread(
+            self.conversation_store.update_timestamp, conversation_id
+        )
 
         logger.info(
             "chat_answer_generated",
@@ -295,6 +319,7 @@ class ChatService:
                 type="status",
                 data={"step": "received", "message": "已收到，我先查一下知识库…"},
             )
+            logger.info("chat_stream_step_start", step="received", conversation_id=conversation_id)
 
             # 会话创建、历史读取、查询改写都是同步/IO 操作，放到线程池避免阻塞事件循环
             start_rewrite = time.perf_counter()
@@ -302,7 +327,22 @@ class ChatService:
                 self.conversation_store.create,
                 user_id=user_id,
             )
+            logger.info(
+                "chat_stream_step_done",
+                step="create_conversation",
+                conversation_id=conversation_id,
+                latency_ms=int((time.perf_counter() - start_rewrite) * 1000),
+            )
+
             history = await asyncio.to_thread(self.get_history, conversation_id)
+            logger.info(
+                "chat_stream_step_done",
+                step="load_history",
+                conversation_id=conversation_id,
+                message_count=len(history),
+                latency_ms=int((time.perf_counter() - start_rewrite) * 1000),
+            )
+
             rewrite_output = await asyncio.to_thread(
                 self.query_rewrite_stage.execute,
                 QueryRewriteInput(
@@ -311,13 +351,30 @@ class ChatService:
                 ),
             )
             query = rewrite_output.rewritten_query
-            kb_id = self._resolve_kb_id(request, current_user)
+            logger.info(
+                "chat_stream_step_done",
+                step="query_rewrite",
+                conversation_id=conversation_id,
+                original_question=request.question,
+                rewritten_question=query,
+                latency_ms=int((time.perf_counter() - start_rewrite) * 1000),
+            )
+
+            kb_id = await self._resolve_kb_id(request, current_user)
             latency_ms_rewrite = int((time.perf_counter() - start_rewrite) * 1000)
+            logger.info(
+                "chat_stream_step_done",
+                step="resolve_kb",
+                conversation_id=conversation_id,
+                kb_id=kb_id,
+                latency_ms=latency_ms_rewrite,
+            )
 
             yield StreamEvent(
                 type="status",
                 data={"step": "retrieving", "message": "正在检索相关知识库…"},
             )
+            logger.info("chat_stream_step_start", step="retrieving", conversation_id=conversation_id)
 
             # 检索阶段也放到线程池，避免阻塞 ASGI 事件循环
             start_retrieve = time.perf_counter()
@@ -328,6 +385,16 @@ class ChatService:
             is_fallback = retrieval_output.is_fallback
             source_count = len(retrieval_results)
             latency_ms_retrieve = int((time.perf_counter() - start_retrieve) * 1000)
+            logger.info(
+                "chat_stream_step_done",
+                step="retrieve",
+                conversation_id=conversation_id,
+                kb_id=kb_id,
+                result_count=source_count,
+                is_fallback=is_fallback,
+                max_score=max((r.score for r in retrieval_results), default=0.0),
+                latency_ms=latency_ms_retrieve,
+            )
 
             # 先把检索到的来源标题推给前端， citations 不必等到生成结束
             yield StreamEvent(
@@ -344,6 +411,12 @@ class ChatService:
                     ],
                 },
             )
+            logger.info(
+                "chat_stream_step_done",
+                step="yield_sources",
+                conversation_id=conversation_id,
+                source_count=min(source_count, 5),
+            )
 
             if source_count > 0:
                 generating_message = f"找到 {source_count} 条相关资料，正在组织回答…"
@@ -354,9 +427,16 @@ class ChatService:
                 type="status",
                 data={"step": "generating", "message": generating_message},
             )
+            logger.info(
+                "chat_stream_step_start",
+                step="generating",
+                conversation_id=conversation_id,
+                message=generating_message,
+            )
 
             # 流式生成
             start_generate = time.perf_counter()
+            chunk_count = 0
             async for event in self.generation_pipeline.generate_stream(
                 GenerationPipelineInput(
                     question=request.question,
@@ -368,6 +448,7 @@ class ChatService:
                 )
             ):
                 if event.type == "chunk":
+                    chunk_count += 1
                     full_answer += event.data.get("content", "")
                     yield StreamEvent(
                         type="chunk",
@@ -389,6 +470,14 @@ class ChatService:
                             "is_stale": is_stale,
                         },
                     )
+                    logger.info(
+                        "chat_stream_step_done",
+                        step="citations",
+                        conversation_id=conversation_id,
+                        citation_count=len(citations),
+                        is_refusal=is_refusal,
+                        is_stale=is_stale,
+                    )
                 elif event.type == "done":
                     yield StreamEvent(
                         type="done",
@@ -396,6 +485,14 @@ class ChatService:
                     )
             latency_ms_generate = int((time.perf_counter() - start_generate) * 1000)
             latency_ms_total = int((time.perf_counter() - start_total) * 1000)
+            logger.info(
+                "chat_stream_step_done",
+                step="generate_stream",
+                conversation_id=conversation_id,
+                chunk_count=chunk_count,
+                answer_length=len(full_answer),
+                latency_ms=latency_ms_generate,
+            )
 
             # 持久化移到后台任务，避免拖尾阻塞响应收尾
             asyncio.create_task(
@@ -410,11 +507,16 @@ class ChatService:
                     is_stale=is_stale,
                 )
             )
+            logger.info(
+                "chat_stream_step_start",
+                step="persist_chat_background",
+                conversation_id=conversation_id,
+            )
 
             # Shadow mode：后台记录 GraphRAG 候选答案，不影响用户流
-            graphrag_enabled = bool(kb_id and self._is_shadow_mode_enabled(kb_id))
+            graphrag_enabled = bool(kb_id and await self._is_shadow_mode_enabled(kb_id))
             graphrag_used = False
-            if kb_id and self._is_shadow_mode_enabled(kb_id):
+            if kb_id and await self._is_shadow_mode_enabled(kb_id):
                 asyncio.create_task(
                     self._record_shadow_async(
                         kb_id=kb_id,
@@ -538,6 +640,7 @@ class ChatService:
         is_stale: bool,
     ) -> None:
         """在后台线程中持久化聊天消息，不阻塞 SSE 响应收尾。"""
+        start = time.perf_counter()
         try:
             self.conversation_store.append_message(
                 conversation_id=conversation_id,
@@ -566,6 +669,7 @@ class ChatService:
                 user_id=user_id,
                 is_refusal=is_refusal,
                 is_stale=is_stale,
+                latency_ms=int((time.perf_counter() - start) * 1000),
             )
         except Exception as exc:
             logger.error(

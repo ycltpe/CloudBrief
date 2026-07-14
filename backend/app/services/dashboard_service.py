@@ -1,5 +1,6 @@
 from collections.abc import Callable
-from datetime import UTC
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
 
@@ -34,6 +35,9 @@ from app.stores.index_metadata import IndexMetadataStore
 from app.stores.user import UserStore
 
 logger = structlog.get_logger()
+
+# 健康检查单依赖超时（秒）
+_HEALTH_CHECK_TIMEOUT = 2.0
 
 
 class DashboardService:
@@ -222,16 +226,55 @@ class DashboardService:
 
     def _safe_system_health(self, graph_store: GraphStore | None = None) -> DashboardSystemHealth:
         try:
-            from datetime import datetime
+            from functools import partial
 
-            dependencies = [
-                self._check_mysql(),
-                self._check_redis(),
-                self._check_milvus(),
-                self._check_neo4j(graph_store),
-                self._check_celery_workers(),
-                self._check_index_readiness(),
-            ]
+            check_map: dict[str, Callable[[], DashboardDependencyStatus]] = {
+                "MySQL": self._check_mysql,
+                "Redis": self._check_redis,
+                "Milvus": self._check_milvus,
+                "Neo4j": partial(self._check_neo4j, graph_store),
+                "Celery Workers": self._check_celery_workers,
+                "Index Readiness": self._check_index_readiness,
+            }
+
+            dependencies: list[DashboardDependencyStatus] = []
+            with ThreadPoolExecutor(max_workers=len(check_map)) as executor:
+                future_to_name = {
+                    executor.submit(fn): name for name, fn in check_map.items()
+                }
+                for future in as_completed(future_to_name, timeout=_HEALTH_CHECK_TIMEOUT):
+                    name = future_to_name[future]
+                    try:
+                        dependencies.append(future.result())
+                    except Exception as exc:
+                        logger.error("dashboard_health_check_failed", dependency=name, error=str(exc))
+                        dependencies.append(
+                            DashboardDependencyStatus(
+                                name=name,
+                                status="unhealthy",
+                                message=_truncate_message(str(exc), 200),
+                            )
+                        )
+
+                # 处理在 as_completed 总窗口内仍未完成的依赖（理论上不会走到这里，因为 as_completed 已带超时）
+                done = {f for f in future_to_name if f.done()}
+                for future in future_to_name:
+                    if future in done:
+                        continue
+                    name = future_to_name[future]
+                    logger.warning(
+                        "dashboard_health_check_timeout",
+                        dependency=name,
+                        timeout_seconds=_HEALTH_CHECK_TIMEOUT,
+                    )
+                    dependencies.append(
+                        DashboardDependencyStatus(
+                            name=name,
+                            status="unhealthy",
+                            message=f"健康检查超过 {_HEALTH_CHECK_TIMEOUT}s 未响应",
+                        )
+                    )
+
             status = self._aggregate_status(dependencies)
             return DashboardSystemHealth(
                 status=status,
@@ -304,9 +347,10 @@ class DashboardService:
 
     def _check_celery_workers(self) -> DashboardDependencyStatus:
         def _ping():
-            inspect = self.celery_app.control.inspect(timeout=5)
-            active = inspect.active()
-            if not active:
+            inspect = self.celery_app.control.inspect(timeout=1)
+            # ping 比 active() 轻量，worker 存在即可认为健康
+            pong = inspect.ping()
+            if not pong:
                 raise RuntimeError("没有可用的 Celery Worker")
 
         return self._check_dependency("Celery Workers", _ping)

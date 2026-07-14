@@ -22,6 +22,16 @@ _RETRY_STOP = stop_after_attempt(3)
 _RETRY_WAIT = wait_exponential(multiplier=1, min=1, max=10)
 
 
+def format_http_error(exc: Exception) -> str:
+    """HTTP 错误附带响应体，便于定位 403/429 等平台侧原因。"""
+    if isinstance(exc, httpx.HTTPStatusError):
+        body = exc.response.text
+        if len(body) > 500:
+            body = body[:500] + "...(truncated)"
+        return f"{exc} | response_body={body}"
+    return str(exc)
+
+
 class _ProviderClient:
     """单个 provider 的同步/异步 HTTP 客户端封装。"""
 
@@ -86,10 +96,16 @@ class ModelClient:
         tokens: int | None = None,
         error: str | None = None,
         provider: str = "primary",
+        model: str | None = None,
+        payload_summary: dict | None = None,
     ) -> None:
-        extra = {"latency_ms": round(latency_ms, 2), "provider": provider}
+        extra: dict[str, Any] = {"latency_ms": round(latency_ms, 2), "provider": provider}
         if tokens is not None:
             extra["token_usage"] = tokens
+        if model is not None:
+            extra["model"] = model
+        if payload_summary is not None:
+            extra["payload"] = payload_summary
         if error is not None:
             extra["error"] = error
             logger.warning(f"{operation}_failed", **extra)
@@ -115,17 +131,26 @@ class ModelClient:
         start = time.perf_counter()
         primary_model = model or self.settings.embedding_model
         secondary_model = self.settings.local_embedding_model
+        payload_summary = {"text_count": len(texts)}
 
         try:
             embeddings = self._embed_with_client(self.primary, texts, primary_model)
-            self._log_call("embed", (time.perf_counter() - start) * 1000, provider="primary")
+            self._log_call(
+                "embed",
+                (time.perf_counter() - start) * 1000,
+                provider="primary",
+                model=primary_model,
+                payload_summary=payload_summary,
+            )
             return embeddings
         except Exception as exc:
             self._log_call(
                 "embed",
                 (time.perf_counter() - start) * 1000,
-                error=str(exc),
+                error=format_http_error(exc),
                 provider="primary",
+                model=primary_model,
+                payload_summary=payload_summary,
             )
             if not self.secondary:
                 raise
@@ -137,14 +162,18 @@ class ModelClient:
                 "embed",
                 (time.perf_counter() - start_secondary) * 1000,
                 provider="secondary",
+                model=secondary_model,
+                payload_summary=payload_summary,
             )
             return embeddings
         except Exception as exc:
             self._log_call(
                 "embed",
                 (time.perf_counter() - start_secondary) * 1000,
-                error=str(exc),
+                error=format_http_error(exc),
                 provider="secondary",
+                model=secondary_model,
+                payload_summary=payload_summary,
             )
             raise
 
@@ -171,6 +200,14 @@ class ModelClient:
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
 
+        payload_summary = {
+            "stream": stream,
+            "temperature": temperature,
+            "message_count": len(messages),
+        }
+        if max_tokens is not None:
+            payload_summary["max_tokens"] = max_tokens
+
         try:
             result = await self._chat_with_payload(
                 self.primary,
@@ -178,15 +215,29 @@ class ModelClient:
                 stream=stream,
                 timeout=request_timeout,
             )
-            self._log_call("chat", (time.perf_counter() - start) * 1000, provider="primary")
+            self._log_call(
+                "chat",
+                (time.perf_counter() - start) * 1000,
+                provider="primary",
+                model=primary_model,
+                payload_summary=payload_summary,
+            )
             return result
         except Exception as exc:
-            self._log_call("chat", (time.perf_counter() - start) * 1000, error=str(exc), provider="primary")
+            self._log_call(
+                "chat",
+                (time.perf_counter() - start) * 1000,
+                error=format_http_error(exc),
+                provider="primary",
+                model=primary_model,
+                payload_summary=payload_summary,
+            )
             if not self.secondary:
                 raise
 
         start_secondary = time.perf_counter()
         payload["model"] = secondary_model
+        payload_summary["model_switched"] = True
         try:
             result = await self._chat_with_payload(
                 self.secondary,
@@ -194,14 +245,22 @@ class ModelClient:
                 stream=stream,
                 timeout=request_timeout,
             )
-            self._log_call("chat", (time.perf_counter() - start_secondary) * 1000, provider="secondary")
+            self._log_call(
+                "chat",
+                (time.perf_counter() - start_secondary) * 1000,
+                provider="secondary",
+                model=secondary_model,
+                payload_summary=payload_summary,
+            )
             return result
         except Exception as exc:
             self._log_call(
                 "chat",
                 (time.perf_counter() - start_secondary) * 1000,
-                error=str(exc),
+                error=format_http_error(exc),
                 provider="secondary",
+                model=secondary_model,
+                payload_summary=payload_summary,
             )
             raise
 
@@ -223,6 +282,9 @@ class ModelClient:
             return data["choices"][0]["message"]["content"]
 
         async def _stream() -> AsyncIterator[str]:
+            start_stream = time.perf_counter()
+            chunk_count = 0
+            first_chunk_latency_ms = None
             async with client._async_client.stream(
                 "POST",
                 "/chat/completions",
@@ -244,7 +306,22 @@ class ModelClient:
                         continue
                     delta = choices[0].get("delta", {}).get("content")
                     if delta:
+                        if first_chunk_latency_ms is None:
+                            first_chunk_latency_ms = int((time.perf_counter() - start_stream) * 1000)
+                            logger.info(
+                                "llm_stream_first_chunk",
+                                provider="primary" if client is self.primary else "secondary",
+                                first_chunk_latency_ms=first_chunk_latency_ms,
+                            )
+                        chunk_count += 1
                         yield delta
+            logger.info(
+                "llm_stream_done",
+                provider="primary" if client is self.primary else "secondary",
+                chunk_count=chunk_count,
+                first_chunk_latency_ms=first_chunk_latency_ms,
+                total_latency_ms=int((time.perf_counter() - start_stream) * 1000),
+            )
 
         return _stream()
 

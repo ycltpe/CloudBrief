@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 
 import structlog
@@ -31,7 +32,7 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Missing authentication token")
 
     auth_service = AuthService()
-    user = auth_service.get_user_by_token(token)
+    user = await asyncio.to_thread(auth_service.get_user_by_token, token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
@@ -48,7 +49,7 @@ async def get_current_user_optional(
         return None
     try:
         auth_service = AuthService()
-        user = auth_service.get_user_by_token(token)
+        user = await asyncio.to_thread(auth_service.get_user_by_token, token)
         if not user:
             return None
         return _user_out(user)

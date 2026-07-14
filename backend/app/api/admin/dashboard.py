@@ -19,7 +19,7 @@ dashboard_service = DashboardService()
 
 
 @router.get("", response_model=AdminDashboardResponse)
-async def get_dashboard(
+def get_dashboard(
     request: Request,
     current_user: UserOut = Depends(require_role("admin", "qa", "user")),
 ):
@@ -35,7 +35,7 @@ async def get_dashboard(
 
 
 @router.get("/stats", response_model=DashboardStatsResponse)
-async def get_dashboard_stats(
+def get_dashboard_stats(
     request: Request,
     current_user: UserOut = Depends(require_role("admin", "qa", "user")),
 ):
@@ -58,7 +58,7 @@ async def get_dashboard_stats(
 
 
 @router.get("/eval-scores", response_model=DashboardEvalScoresResponse)
-async def get_dashboard_eval_scores(
+def get_dashboard_eval_scores(
     request: Request,
     current_user: UserOut = Depends(require_role("admin", "qa", "user")),
 ):
@@ -81,7 +81,7 @@ async def get_dashboard_eval_scores(
 
 
 @router.get("/recent-tasks", response_model=DashboardRecentTasksResponse)
-async def get_dashboard_recent_tasks(
+def get_dashboard_recent_tasks(
     request: Request,
     current_user: UserOut = Depends(require_role("admin", "qa", "user")),
 ):
@@ -104,7 +104,7 @@ async def get_dashboard_recent_tasks(
 
 
 @router.get("/graph-rag", response_model=DashboardGraphRagResponse)
-async def get_dashboard_graph_rag(
+def get_dashboard_graph_rag(
     request: Request,
     current_user: UserOut = Depends(require_role("admin", "qa", "user")),
 ):
@@ -127,7 +127,7 @@ async def get_dashboard_graph_rag(
 
 
 @router.get("/system-health", response_model=DashboardSystemHealthResponse)
-async def get_dashboard_system_health(
+def get_dashboard_system_health(
     request: Request,
     current_user: UserOut = Depends(require_role("admin", "qa", "user")),
 ):

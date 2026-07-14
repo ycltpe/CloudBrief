@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.security import HTTPBearer
 
@@ -13,7 +15,8 @@ security = HTTPBearer(auto_error=False)
 @router.post("/auth/register", response_model=UserOut)
 async def register(request: UserCreate):
     try:
-        user = auth_service.register(
+        user = await asyncio.to_thread(
+            auth_service.register,
             username=request.username,
             password=request.password,
             role=request.role,
@@ -31,7 +34,8 @@ async def register(request: UserCreate):
 @router.post("/auth/login", response_model=LoginResponse)
 async def login(response: Response, request: LoginRequest):
     try:
-        user, access_token = auth_service.login(
+        user, access_token = await asyncio.to_thread(
+            auth_service.login,
             username=request.username,
             password=request.password,
         )

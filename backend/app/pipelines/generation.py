@@ -79,7 +79,9 @@ class GenerationPipeline:
             return None
         try:
             schema_store = GraphSchemaStore()
-            schema = schema_store.get_by_directory_id(int(kb_id))
+            schema = await asyncio.to_thread(
+                schema_store.get_by_directory_id, int(kb_id)
+            )
             if not schema or not schema.enabled:
                 return None
             if not (schema.entity_types or schema.relation_types):
@@ -147,7 +149,12 @@ class GenerationPipeline:
                 diagnostics=diagnostics,
             )
         except Exception as exc:
-            logger.error("llm_generation_failed", error=str(exc))
+            logger.error(
+                "llm_generation_failed",
+                error=str(exc),
+                model=self.settings_service.get_runtime_value("llm_model"),
+                provider=self.settings.llm_provider,
+            )
             ERROR_TOTAL.labels(code="LLM_UNAVAILABLE", component="generation").inc()
             return GenerationPipelineOutput(
                 answer="抱歉，当前生成服务暂不可用，请稍后重试。",
@@ -184,6 +191,13 @@ class GenerationPipeline:
             "recall_count": len(input_data.chunks),
             "max_score": input_data.max_score,
         }
+        logger.info(
+            "generation_stream_start",
+            kb_id=input_data.kb_id,
+            recall_count=len(input_data.chunks),
+            max_score=input_data.max_score,
+            is_fallback=input_data.is_fallback,
+        )
 
         # 硬分支拒答：rerank fallback 时跳过阈值检查，因为此时分数来自 RRF 与 rerank 不同尺度
         threshold = self.settings_service.get_runtime_value("refusal_threshold")
@@ -193,6 +207,12 @@ class GenerationPipeline:
         )
         if should_refuse:
             REFUSAL_RATE.labels(reason="no_recall", kb_id=input_data.kb_id or "default").inc()
+            logger.info(
+                "generation_stream_refuse",
+                threshold=threshold,
+                reason="no_recall_or_low_score",
+                latency_ms=int((time.perf_counter() - start) * 1000),
+            )
             refusal = RefusalResponse()
             yield StreamEvent(type="chunk", data={"content": refusal.answer})
             yield StreamEvent(
@@ -209,9 +229,16 @@ class GenerationPipeline:
 
         graph_context = input_data.graph_context
         if graph_context is None:
+            start_graph = time.perf_counter()
             graph_context = await self._maybe_fetch_graph_context(
                 input_data.question,
                 input_data.kb_id,
+            )
+            logger.info(
+                "generation_stream_step_done",
+                step="graph_rag",
+                has_context=bool(graph_context and graph_context.text),
+                latency_ms=int((time.perf_counter() - start_graph) * 1000),
             )
         if graph_context and graph_context.diagnostics:
             diagnostics["graph_rag"] = graph_context.diagnostics
@@ -221,6 +248,10 @@ class GenerationPipeline:
             )
 
         raw_answer = ""
+        chunk_count = 0
+        first_chunk_latency_ms = None
+        start_llm = time.perf_counter()
+        logger.info("generation_stream_step_start", step="llm_stream")
         try:
             async for chunk in self.llm_stage.execute_stream(
                 GenerationInput(
@@ -230,8 +261,23 @@ class GenerationPipeline:
                     graph_context=graph_context,
                 )
             ):
+                if first_chunk_latency_ms is None:
+                    first_chunk_latency_ms = int((time.perf_counter() - start_llm) * 1000)
+                    logger.info(
+                        "generation_stream_first_chunk",
+                        first_chunk_latency_ms=first_chunk_latency_ms,
+                    )
                 raw_answer += chunk
+                chunk_count += 1
                 yield StreamEvent(type="chunk", data={"content": chunk})
+            logger.info(
+                "generation_stream_step_done",
+                step="llm_stream",
+                chunk_count=chunk_count,
+                first_chunk_latency_ms=first_chunk_latency_ms,
+                answer_length=len(raw_answer),
+                latency_ms=int((time.perf_counter() - start_llm) * 1000),
+            )
         except TimeoutError as exc:
             logger.warning("llm_stream_timeout", error=str(exc))
             ERROR_TOTAL.labels(code="LLM_TIMEOUT", component="generation").inc()
@@ -246,7 +292,12 @@ class GenerationPipeline:
             yield StreamEvent(type="done", data={})
             return
         except Exception as exc:
-            logger.error("llm_stream_failed", error=str(exc))
+            logger.error(
+                "llm_stream_failed",
+                error=str(exc),
+                model=self.settings_service.get_runtime_value("llm_model"),
+                provider=self.settings.llm_provider,
+            )
             ERROR_TOTAL.labels(code="LLM_UNAVAILABLE", component="generation").inc()
             yield StreamEvent(
                 type="chunk",
@@ -265,10 +316,18 @@ class GenerationPipeline:
                 model=self.settings_service.get_runtime_value("llm_model"),
             ).observe(latency_ms)
 
+        start_parse = time.perf_counter()
         parsed = self.citation_parser.execute(
             CitationParserInput(raw_answer=raw_answer, chunks=input_data.chunks)
         )
         is_stale = self._check_staleness(input_data.chunks)
+        logger.info(
+            "generation_stream_step_done",
+            step="citation_parse",
+            citation_count=len(parsed.citations),
+            is_stale=is_stale,
+            latency_ms=int((time.perf_counter() - start_parse) * 1000),
+        )
 
         yield StreamEvent(
             type="citations",
@@ -280,6 +339,12 @@ class GenerationPipeline:
             },
         )
         yield StreamEvent(type="done", data={})
+        logger.info(
+            "generation_stream_done",
+            total_latency_ms=int((time.perf_counter() - start) * 1000),
+            chunk_count=chunk_count,
+            answer_length=len(raw_answer),
+        )
 
     def _check_staleness(self, chunks: list[RetrievalResult]) -> bool:
         threshold = timedelta(days=self.settings.stale_threshold_days)

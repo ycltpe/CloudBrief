@@ -1,4 +1,6 @@
+import asyncio
 import json
+import time
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -45,9 +47,22 @@ async def chat(
         )
         if request.stream:
             async def event_generator():
+                stream_start = time.perf_counter()
+                event_count = 0
                 async for event in chat_service.ask_stream(request, current_user=current_user):
+                    event_count += 1
                     yield _format_sse(event)
+                logger.info(
+                    "chat_stream_response_closed",
+                    user_id=current_user.id if current_user else None,
+                    event_count=event_count,
+                    latency_ms=int((time.perf_counter() - stream_start) * 1000),
+                )
 
+            logger.info(
+                "chat_stream_response_start",
+                user_id=current_user.id if current_user else None,
+            )
             return StreamingResponse(
                 event_generator(),
                 media_type="text/event-stream",
@@ -81,7 +96,7 @@ async def get_conversation_history(
         )
         return {
             "conversation_id": conversation_id,
-            "messages": chat_service.get_history(conversation_id),
+            "messages": await asyncio.to_thread(chat_service.get_history, conversation_id),
         }
     except HTTPException:
         raise
@@ -99,7 +114,7 @@ async def list_conversations(
         raise HTTPException(status_code=401, detail="需要登录才能查看会话列表")
     try:
         logger.info("list_conversations", user_id=current_user.id)
-        return chat_service.list_conversations(current_user.id)
+        return await asyncio.to_thread(chat_service.list_conversations, current_user.id)
     except HTTPException:
         raise
     except Exception as exc:
@@ -122,14 +137,17 @@ async def update_conversation_title(
             conversation_id=conversation_id,
             user_id=current_user.id,
         )
-        ok = chat_service.update_conversation_title(
+        ok = await asyncio.to_thread(
+            chat_service.update_conversation_title,
             conversation_id=conversation_id,
             user_id=current_user.id,
             title=body.title,
         )
         if not ok:
             raise HTTPException(status_code=404, detail="会话不存在或无权限")
-        conversation = chat_service.conversation_store.get_conversation(conversation_id)
+        conversation = await asyncio.to_thread(
+            chat_service.conversation_store.get_conversation, conversation_id
+        )
         return ConversationOut(
             id=conversation.id,
             title=conversation.title,

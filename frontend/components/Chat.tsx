@@ -188,6 +188,7 @@ export default function Chat({
         body: JSON.stringify({
           conversation_id: activeId,
           question,
+          stream: true,
           ...(selectedKbId ? { kb_ids: [selectedKbId] } : {}),
         }),
         signal: abortController.signal,

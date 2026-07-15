@@ -42,11 +42,14 @@ class NativeParser:
         pdf_page_batch_size: int = 25,
         ocr_fn: OcrCallback | None = None,
         pdf_ocr_dpi: int = 200,
+        pdf_max_pages: int = 2000,
     ):
         self.data_dir = Path(data_dir)
         # 超过阈值页数的 PDF 按批推送解析心跳，小 PDF 不增加事件噪音
         self.pdf_batch_page_threshold = pdf_batch_page_threshold
         self.pdf_page_batch_size = pdf_page_batch_size
+        # 单份 PDF 页数上限，超限直接拒绝
+        self.pdf_max_pages = pdf_max_pages
         # 无文字层 PDF 页的回退 OCR；为 None 时扫描件按失败处理
         self.ocr_fn = ocr_fn
         self.pdf_ocr_dpi = pdf_ocr_dpi
@@ -244,6 +247,10 @@ class NativeParser:
             raise FileParseError("PDF 已加密，无法解析")
 
         total_pages = len(reader.pages)
+        if total_pages > self.pdf_max_pages:
+            raise FileParseError(
+                f"PDF 共 {total_pages} 页，超过 {self.pdf_max_pages} 页上限，请拆分后上传"
+            )
         heartbeat = on_progress if total_pages > self.pdf_batch_page_threshold else None
         page_texts: list[str] = []
         ocr_attempted = False
@@ -403,4 +410,5 @@ def build_parser(settings: Settings, data_dir: Path, model_client=None):
         pdf_page_batch_size=settings.pdf_page_batch_size,
         ocr_fn=ocr_fn,
         pdf_ocr_dpi=settings.pdf_ocr_dpi,
+        pdf_max_pages=settings.pdf_max_pages,
     )

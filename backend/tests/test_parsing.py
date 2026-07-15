@@ -330,8 +330,18 @@ def test_parse_pdf_ocr_empty_result_raises(tmp_path):
         parser.parse_file(file_path)
 
 
-def test_build_parser_wires_ocr_fn(tmp_path, monkeypatch):
-    from unittest.mock import MagicMock
+def test_parse_pdf_over_max_pages_rejected(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True)
+    file_path = data_dir / "huge.pdf"
+    _write_text_pdf(file_path, [f"page {i}" for i in range(5)])
+
+    parser = NativeParser(data_dir, pdf_max_pages=3)
+    with pytest.raises(FileParseError, match="上限"):
+        parser.parse_file(file_path)
+
+
+def test_build_parser_wires_ocr_fn(tmp_path, monkeypatch):    from unittest.mock import MagicMock
 
     from app.config import get_settings
     from app.stages.parsing import build_parser

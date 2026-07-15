@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     # 大 PDF 页级分批：超过阈值页数时按批推送解析心跳
     pdf_batch_page_threshold: int = 50
     pdf_page_batch_size: int = 25
+    # 单份 PDF 页数上限：防止超大页数文件长时间占满索引 worker
+    pdf_max_pages: int = 2000
 
     # 扫描件 OCR：对无文字层 PDF 页调用视觉模型识别（DashScope qwen-vl-ocr）
     ocr_enabled: bool = True

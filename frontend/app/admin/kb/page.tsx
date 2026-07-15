@@ -421,7 +421,7 @@ export default function KbPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || '推荐失败');
+        throw new Error(err.error?.message || err.detail || '推荐失败');
       }
       const data = (await res.json()) as KbGraphSchemaRecommendResponse;
       setGraphSchema((prev) => {

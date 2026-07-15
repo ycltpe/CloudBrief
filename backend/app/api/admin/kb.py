@@ -292,6 +292,9 @@ async def recommend_kb_graph_schema(
     try:
         service = GraphExtractionService(model_client)
         recommended = await service.recommend_schema(kb_chunks[:10], kb_id=str(directory_id))
+    except Exception as exc:
+        logger.error("admin_kb_graph_schema_recommend_failed", directory_id=directory_id, error=str(exc))
+        raise HTTPException(status_code=502, detail="模型服务暂不可用，schema 推荐失败，请稍后重试")
     finally:
         await model_client.aclose()
 

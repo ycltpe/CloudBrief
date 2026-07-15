@@ -265,6 +265,7 @@ class ModelClient:
             )
             raise
 
+    @retry(stop=_RETRY_STOP, wait=_RETRY_WAIT, retry=_RETRY_CONDITION)
     async def _chat_with_payload(
         self,
         client: _ProviderClient,

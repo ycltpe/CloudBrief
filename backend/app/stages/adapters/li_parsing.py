@@ -19,29 +19,48 @@ class LlamaIndexParserAdapter:
     def __init__(self, data_dir: Path):
         self.data_dir = Path(data_dir)
 
-    def parse(self) -> list[Document]:
+    def parse(self, on_progress=None) -> list[Document]:
         reader = SimpleDirectoryReader(
             input_dir=str(self.data_dir),
             recursive=True,
             filename_as_id=True,
         )
-        llama_docs = reader.load_data()
+        return self._to_documents(reader.load_data(), fallback_base=self.data_dir)
 
+    def _parse_kb(self, kb_root: Path, on_progress=None) -> list[Document]:
+        """只解析指定知识库目录下的文件，与 NativeParser._parse_kb 同语义。"""
+        reader = SimpleDirectoryReader(
+            input_dir=str(kb_root),
+            recursive=True,
+            filename_as_id=True,
+        )
+        return self._to_documents(reader.load_data(), fallback_base=Path(kb_root))
+
+    def parse_file(self, file_path: Path, on_progress=None) -> list[Document]:
+        """解析单个文件，与 NativeParser.parse_file 同语义（on_progress 仅 Native 支持）。"""
+        file_path = Path(file_path)
+        reader = SimpleDirectoryReader(input_files=[str(file_path)], filename_as_id=True)
+        return self._to_documents(reader.load_data(), fallback_base=file_path.parent)
+
+    def _to_documents(self, llama_docs, fallback_base: Path) -> list[Document]:
+        """llama_index Document 列表统一转 DTO；source_id 取相对 data_dir 路径。"""
         results: list[Document] = []
         for doc in llama_docs:
-            relative_path = Path(doc.metadata.get("file_path", doc.id_)).relative_to(
-                self.data_dir
-            )
-            source_type = self._infer_source_type(relative_path)
-            title = doc.metadata.get("title") or relative_path.stem
-            updated_at = self._parse_datetime(doc.metadata.get("updated_at"))
-
+            raw_path = Path(doc.metadata.get("file_path", doc.id_))
+            try:
+                relative_path = raw_path.relative_to(self.data_dir)
+            except ValueError:
+                try:
+                    relative_path = raw_path.relative_to(fallback_base)
+                except ValueError:
+                    relative_path = Path(raw_path.name)
             results.append(
                 Document(
                     content=doc.text,
-                    source_type=source_type,
-                    title=str(title),
-                    updated_at=updated_at or datetime.utcnow(),
+                    source_type=self._infer_source_type(relative_path),
+                    title=str(doc.metadata.get("title") or relative_path.stem),
+                    updated_at=self._parse_datetime(doc.metadata.get("updated_at"))
+                    or datetime.utcnow(),
                     source_id=str(relative_path),
                 )
             )

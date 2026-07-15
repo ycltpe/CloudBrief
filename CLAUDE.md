@@ -112,7 +112,7 @@ npm run lint
 
 ### 索引构建流程
 
-1. 解析 `backend/data/`（或知识库上传文件）为 `Document`。
+1. 解析 `backend/data/`（或知识库上传文件）为 `Document`。支持格式：Markdown / JSON / CSV / TXT / PDF / DOCX / XLSX（`.doc`/`.xls` 老格式不支持）。PDF 无文字层页自动回退 OCR（DashScope qwen-vl-ocr，逐页心跳）；超过 `PDF_BATCH_PAGE_THRESHOLD` 页的 PDF 按 `PDF_PAGE_BATCH_SIZE` 页一批解析并推送进度心跳；单文件解析失败只跳过不中断整批重建，全部失败则中止重建（原索引保持不变）。
 2. `ChunkingStage` 切分为 `Chunk`。
 3. `EmbeddingStage` 调用 DashScope text-embedding-v3 生成向量。
 4. 新 collection + 新 BM25 文件写入。
@@ -160,6 +160,8 @@ npm run lint
 - `LLM_PROVIDER` / `RERANKER_PROVIDER`：`dashscope` 或 `local`。
 - `MILVUS_URI`、`REDIS_URL`、`MYSQL_URL`、`BM25_INDEX_PATH`：存储连接。
 - `REFUSAL_THRESHOLD`、`STALE_THRESHOLD_DAYS`、`MAX_HISTORY_ROUNDS`、`REQUEST_TIMEOUT`：业务阈值。
+- `PDF_BATCH_PAGE_THRESHOLD`（默认 50）、`PDF_PAGE_BATCH_SIZE`（默认 25）：大 PDF 页级分批解析阈值与批大小。
+- `OCR_ENABLED`（默认 true）、`OCR_MODEL`（默认 `qwen-vl-ocr-latest`）、`OCR_TIMEOUT_SECONDS`（默认 120）、`PDF_OCR_DPI`（默认 200）：扫描件 OCR 开关与参数。
 - `BACKEND_PORT`：FastAPI 端口（默认 8001）。
 
 ### 本地 Reranker 部署

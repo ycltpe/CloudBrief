@@ -1236,12 +1236,12 @@ export default function KbPage() {
                 <label className="block text-sm font-medium text-card-foreground mb-1">选择文件</label>
                 <input
                   type="file"
-                  accept=".md,.json,.csv,.txt"
+                  accept=".md,.json,.csv,.txt,.pdf,.docx,.xlsx"
                   onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                   required
                   className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:bg-muted file:text-card-foreground hover:file:bg-muted-foreground/20"
                 />
-                <p className="mt-1 text-xs text-muted-foreground">支持 Markdown / JSON / CSV / TXT</p>
+                <p className="mt-1 text-xs text-muted-foreground">支持 PDF（扫描件自动 OCR 识别）/ Word (.docx) / Excel (.xlsx) / Markdown / JSON / CSV / TXT</p>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button

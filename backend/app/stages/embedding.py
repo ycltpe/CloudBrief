@@ -1,4 +1,6 @@
 
+from collections.abc import Callable
+
 from pydantic import BaseModel
 
 from app.clients.model_client import ModelClient
@@ -35,11 +37,13 @@ class EmbeddingStage(AbstractStage[EmbeddingInput, EmbeddingOutput]):
         self,
         input_data: EmbeddingInput,
         model_name: str | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> EmbeddingOutput:
         chunks = input_data.chunks
         embeddings: list[EmbeddingResult] = []
+        total = len(chunks)
 
-        for i in range(0, len(chunks), self.batch_size):
+        for i in range(0, total, self.batch_size):
             batch = chunks[i : i + self.batch_size]
             texts = [c.content for c in batch]
             vectors = self.model_client.embed(texts, model=model_name)
@@ -47,5 +51,7 @@ class EmbeddingStage(AbstractStage[EmbeddingInput, EmbeddingOutput]):
                 embeddings.append(
                     EmbeddingResult(chunk_id=chunk.chunk_id, embedding=vector)
                 )
+            if on_progress:
+                on_progress(min(i + self.batch_size, total), total)
 
         return EmbeddingOutput(embeddings=embeddings)

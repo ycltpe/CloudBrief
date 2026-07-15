@@ -1,3 +1,4 @@
+import base64
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -324,6 +325,68 @@ class ModelClient:
             )
 
         return _stream()
+
+    @retry(stop=_RETRY_STOP, wait=_RETRY_WAIT, retry=_RETRY_CONDITION)
+    def _ocr_with_client(
+        self,
+        client: _ProviderClient,
+        image_b64: str,
+        model: str,
+    ) -> str:
+        response = client._sync_client.post(
+            "/chat/completions",
+            json={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                            },
+                            {
+                                "type": "text",
+                                "text": "请识别并输出图片中的全部文字，保持原有段落结构，只输出文字内容本身。",
+                            },
+                        ],
+                    }
+                ],
+                "temperature": 0,
+            },
+            timeout=self.settings.ocr_timeout_seconds,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
+
+    def ocr_image(self, image_bytes: bytes, model: str | None = None) -> str:
+        """对单张图片（PNG 字节）做 OCR，返回识别文本。扫描件 PDF 逐页调用。"""
+        start = time.perf_counter()
+        primary_model = model or self.settings.ocr_model
+        image_b64 = base64.b64encode(image_bytes).decode("ascii")
+        payload_summary = {"image_bytes": len(image_bytes)}
+
+        try:
+            text = self._ocr_with_client(self.primary, image_b64, primary_model)
+            self._log_call(
+                "ocr",
+                (time.perf_counter() - start) * 1000,
+                provider="primary",
+                model=primary_model,
+                payload_summary=payload_summary,
+            )
+            return text
+        except Exception as exc:
+            self._log_call(
+                "ocr",
+                (time.perf_counter() - start) * 1000,
+                error=format_http_error(exc),
+                provider="primary",
+                model=primary_model,
+                payload_summary=payload_summary,
+            )
+            raise
 
     def close(self) -> None:
         self.primary.close()

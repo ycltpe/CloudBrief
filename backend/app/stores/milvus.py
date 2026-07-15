@@ -53,6 +53,12 @@ class MilvusStore:
         if len(chunks) != len(embeddings):
             raise ValueError("chunks and embeddings must have same length")
 
+        if embeddings and len(embeddings[0]) != self.dim:
+            raise ValueError(
+                f"向量维度({len(embeddings[0])})与集合维度({self.dim})不一致，"
+                "请检查 embedding_dim 配置是否与 embedding 模型实际输出维度一致"
+            )
+
         rows: list[dict[str, Any]] = []
         for chunk, vector in zip(chunks, embeddings):
             rows.append(

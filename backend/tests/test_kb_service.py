@@ -126,3 +126,37 @@ def test_upload_file_keeps_file_when_index_trigger_fails(tmp_path, monkeypatch):
     assert result.file.status == "uploaded"
     assert result.task_id is None
     store.update_file_index_status.assert_not_called()
+
+
+def _make_upload_service(tmp_path, monkeypatch) -> KbService:
+    store = MagicMock()
+    store.get_directory.return_value = KbDirectory(id=1, name="docs")
+    store.create_file.return_value = _make_kb_file(7, "uploaded")
+
+    settings_service = MagicMock()
+    settings_service.get_runtime_value.return_value = False
+
+    svc = KbService(store=store, index_service=MagicMock(), settings_service=settings_service)
+    monkeypatch.setattr(svc, "storage_path", tmp_path)
+    return svc
+
+
+def test_upload_file_accepts_office_formats(tmp_path, monkeypatch):
+    svc = _make_upload_service(tmp_path, monkeypatch)
+    for name in ("产品手册.pdf", "客服SOP.docx", "FAQ汇总.xlsx"):
+        result = svc.upload_file(directory_id=1, upload_file=_FakeUploadFile(name, b"binary"))
+        assert result.file.status == "uploaded"
+
+
+def test_upload_file_rejects_legacy_doc_xls_with_guidance(tmp_path, monkeypatch):
+    svc = _make_upload_service(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="另存"):
+        svc.upload_file(directory_id=1, upload_file=_FakeUploadFile("旧文档.doc", b"x"))
+    with pytest.raises(ValueError, match="另存"):
+        svc.upload_file(directory_id=1, upload_file=_FakeUploadFile("旧表格.xls", b"x"))
+
+
+def test_upload_file_rejects_unknown_extension(tmp_path, monkeypatch):
+    svc = _make_upload_service(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="不支持的文件类型"):
+        svc.upload_file(directory_id=1, upload_file=_FakeUploadFile("evil.exe", b"x"))

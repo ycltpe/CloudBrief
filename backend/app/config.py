@@ -68,6 +68,16 @@ class Settings(BaseSettings):
     # Embedding 批大小（DashScope text-embedding-v3 上限为 10）
     embedding_batch_size: int = 10
 
+    # 大 PDF 页级分批：超过阈值页数时按批推送解析心跳
+    pdf_batch_page_threshold: int = 50
+    pdf_page_batch_size: int = 25
+
+    # 扫描件 OCR：对无文字层 PDF 页调用视觉模型识别（DashScope qwen-vl-ocr）
+    ocr_enabled: bool = True
+    ocr_model: str = "qwen-vl-ocr-latest"
+    ocr_timeout_seconds: float = 120.0
+    pdf_ocr_dpi: int = 200
+
     # JWT 认证配置
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"

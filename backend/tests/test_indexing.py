@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.stages.base import Chunk, Document, EmbeddingResult
-from app.tasks.indexing import index_file_task
+from app.tasks.indexing import index_file_task, rebuild_index_task
 
 
 def _make_kb_file(file_id: int = 1):
@@ -46,7 +46,7 @@ class _FakeNativeParser:
     def __init__(self, data_dir):
         pass
 
-    def parse_file(self, file_path):
+    def parse_file(self, file_path, on_progress=None):
         return [_make_document()]
 
 
@@ -62,7 +62,7 @@ class _FakeEmbeddingStage:
     def __init__(self, *args, **kwargs):
         pass
 
-    def execute(self, input_data, model_name=None):
+    def execute(self, input_data, model_name=None, on_progress=None):
         return MagicMock(embeddings=[_make_embedding("new_chunk", dim=3)])
 
 
@@ -133,7 +133,10 @@ def patched_indexing_env(tmp_path, monkeypatch):
         patch("app.tasks.indexing.get_settings", return_value=settings),
         patch("app.tasks.indexing._get_redis_client", return_value=MagicMock()),
         patch("app.tasks.indexing._publish_step"),
-        patch("app.tasks.indexing.NativeParser", _FakeNativeParser),
+        patch(
+            "app.tasks.indexing.build_parser",
+            lambda settings, data_dir, model_client=None: _FakeNativeParser(data_dir),
+        ),
         patch("app.tasks.indexing.ChunkingStage", _FakeChunkingStage),
         patch("app.tasks.indexing.EmbeddingStage", _FakeEmbeddingStage),
         patch("app.tasks.indexing.KbStore", return_value=kb_store),
@@ -213,8 +216,8 @@ def test_index_file_task_marks_failed_when_parse_raises(patched_indexing_env):
     patched_indexing_env["milvus_mock_cls"].return_value = _FakeMilvusStore()
     patched_indexing_env["bm25_mock_cls"].side_effect = _FakeBM25Store
 
-    with patch("app.tasks.indexing.NativeParser") as parser_cls:
-        parser_cls.return_value.parse_file.side_effect = ValueError("bad file")
+    with patch("app.tasks.indexing.build_parser") as build_parser_mock:
+        build_parser_mock.return_value.parse_file.side_effect = ValueError("bad file")
         with pytest.raises(ValueError, match="bad file"):
             index_file_task.run(file_id=1)
 
@@ -223,3 +226,23 @@ def test_index_file_task_marks_failed_when_parse_raises(patched_indexing_env):
     assert len(calls) >= 2
     last = calls[-1]
     assert last.args[1] == "failed"
+
+
+def test_rebuild_task_aborts_when_no_documents():
+    """全灭重建（所有文件解析失败）必须中止，不得切换空索引上线。"""
+    with (
+        patch("app.tasks.indexing._get_redis_client"),
+        patch("app.tasks.indexing.ModelClient"),
+        patch("app.tasks.indexing.SettingsService") as settings_service_cls,
+        patch(
+            "app.tasks.indexing._parse_documents",
+            return_value=([], ["scanned.pdf: 该 PDF 无文字层（可能是扫描件），本期暂不支持"]),
+        ),
+        patch("app.tasks.indexing.MilvusStore") as milvus_cls,
+        patch("app.tasks.indexing.IndexMetadataStore") as metadata_cls,
+    ):
+        settings_service_cls.return_value.get_runtime_value.side_effect = ["model-x", 1024]
+        with pytest.raises(ValueError, match="未解析到任何有效文档"):
+            rebuild_index_task.run(kb_id="default")
+        milvus_cls.assert_not_called()
+        metadata_cls.assert_not_called()

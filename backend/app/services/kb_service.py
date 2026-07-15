@@ -24,7 +24,10 @@ from app.stores.kb import KbStore
 
 logger = structlog.get_logger()
 
-KB_ALLOWED_EXTENSIONS = {".md", ".json", ".csv", ".txt"}
+KB_ALLOWED_EXTENSIONS = {".md", ".json", ".csv", ".txt", ".pdf", ".docx", ".xlsx"}
+KB_ALLOWED_EXTENSIONS_LABEL = "PDF (.pdf)、Word (.docx)、Excel (.xlsx)、Markdown (.md)、JSON (.json)、CSV (.csv)、TXT (.txt)"
+# 老二进制格式：给明确指引而非泛泛的"不支持"
+KB_LEGACY_EXTENSIONS = {".doc", ".xls"}
 
 
 class KbService:
@@ -169,8 +172,10 @@ class KbService:
 
         original_name = Path(upload_file.filename or "unnamed").name
         ext = Path(original_name).suffix.lower()
+        if ext in KB_LEGACY_EXTENSIONS:
+            raise ValueError(f"暂仅支持新版格式（.docx/.xlsx），请将 {ext} 文件另存后上传")
         if ext not in KB_ALLOWED_EXTENSIONS:
-            raise ValueError(f"不支持的文件类型: {ext or '无后缀'}，仅支持 {', '.join(KB_ALLOWED_EXTENSIONS)}")
+            raise ValueError(f"不支持的文件类型: {ext or '无后缀'}。支持 {KB_ALLOWED_EXTENSIONS_LABEL}")
 
         contents = upload_file.file.read()
         size = len(contents)

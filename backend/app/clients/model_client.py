@@ -13,6 +13,7 @@ from tenacity import (
 )
 
 from app.config import Settings
+from app.services.settings_service import SettingsService
 
 logger = structlog.get_logger()
 
@@ -63,32 +64,121 @@ class _ProviderClient:
 class ModelClient:
     """统一封装 Embedding / Rerank / LLM 调用，集中管理密钥、重试、超时、日志。
 
-    支持主 provider（DashScope）失败后降级到本地 vLLM/Ollama 备用 provider。
+    三种能力各自使用本组凭据（LLM / Embedding / OCR 的 key 与端点相互独立）。
+    provider 为显式选择：=local 时本地服务为权威路径，不回退云端（避免私有化数据外发）；
+    =dashscope 时保留到本地备用 provider 的失败降级。
+    连接参数与模型名走运行期配置（DB → .env → 默认）：连接签名变化时自动重建客户端，
+    模型名/超时每次调用实时读取。
     """
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.timeout = settings.request_timeout
+        self._settings_service = SettingsService()
+        self._clients_signature: tuple | None = None
+        self.llm_primary: _ProviderClient | None = None
+        self.llm_secondary: _ProviderClient | None = None
+        self.embed_primary: _ProviderClient | None = None
+        self.embed_secondary: _ProviderClient | None = None
+        self.ocr_client: _ProviderClient | None = None
+        self.timeout: float = settings.request_timeout
+        self._ensure_clients()
 
-        self.primary = _ProviderClient(
-            base_url=str(settings.model_base_url),
-            api_key=settings.dashscope_api_key.get_secret_value(),
-            timeout=settings.request_timeout,
-        )
-        self.secondary: _ProviderClient | None = None
-        if settings.llm_provider == "local" or settings.local_llm_url:
-            # 本地 provider 通常不需要 api_key，或 api_key 为占位值
-            self.secondary = _ProviderClient(
-                base_url=settings.local_llm_url,
-                api_key=None,
-                timeout=settings.request_timeout,
+    def _client_params(self) -> dict:
+        svc = self._settings_service
+        return {
+            "llm_provider": str(svc.get_runtime_value("llm_provider")),
+            "llm_base_url": str(svc.get_runtime_value("llm_base_url")),
+            "llm_api_key": str(svc.get_runtime_value("llm_api_key") or ""),
+            "local_llm_url": str(svc.get_runtime_value("local_llm_url") or ""),
+            "embedding_provider": str(svc.get_runtime_value("embedding_provider")),
+            "embedding_base_url": str(svc.get_runtime_value("embedding_base_url")),
+            "embedding_api_key": str(svc.get_runtime_value("embedding_api_key") or ""),
+            "local_embedding_url": str(svc.get_runtime_value("local_embedding_url") or ""),
+            "ocr_base_url": str(svc.get_runtime_value("ocr_base_url")),
+            "ocr_api_key": str(svc.get_runtime_value("ocr_api_key") or ""),
+            "request_timeout": float(svc.get_runtime_value("request_timeout")),
+        }
+
+    def _all_clients(self) -> list[_ProviderClient]:
+        return [
+            c
+            for c in (
+                self.llm_primary,
+                self.llm_secondary,
+                self.embed_primary,
+                self.embed_secondary,
+                self.ocr_client,
             )
+            if c is not None
+        ]
 
-    def _get_clients(self) -> list[_ProviderClient]:
-        clients = [self.primary]
-        if self.secondary:
-            clients.append(self.secondary)
-        return clients
+    def _ensure_clients(self) -> None:
+        params = self._client_params()
+        signature = tuple(params.values())
+        if signature == self._clients_signature:
+            return
+        old_clients = self._all_clients()
+        self.timeout = params["request_timeout"]
+
+        # LLM：local 为权威路径；dashscope 模式下本地端点作为失败降级
+        if params["llm_provider"] == "local":
+            self.llm_primary = _ProviderClient(
+                base_url=params["local_llm_url"],
+                api_key=None,
+                timeout=params["request_timeout"],
+            )
+            self.llm_secondary = None
+        else:
+            self.llm_primary = _ProviderClient(
+                base_url=params["llm_base_url"],
+                api_key=params["llm_api_key"],
+                timeout=params["request_timeout"],
+            )
+            self.llm_secondary = None
+            if params["local_llm_url"]:
+                # 本地 provider 通常不需要 api_key，或 api_key 为占位值
+                self.llm_secondary = _ProviderClient(
+                    base_url=params["local_llm_url"],
+                    api_key=None,
+                    timeout=params["request_timeout"],
+                )
+
+        # Embedding：本地降级端点未单独配置时回退本地 LLM 端点
+        embed_local_url = params["local_embedding_url"] or params["local_llm_url"]
+        if params["embedding_provider"] == "local":
+            self.embed_primary = _ProviderClient(
+                base_url=embed_local_url,
+                api_key=None,
+                timeout=params["request_timeout"],
+            )
+            self.embed_secondary = None
+        else:
+            self.embed_primary = _ProviderClient(
+                base_url=params["embedding_base_url"],
+                api_key=params["embedding_api_key"],
+                timeout=params["request_timeout"],
+            )
+            self.embed_secondary = None
+            if embed_local_url:
+                self.embed_secondary = _ProviderClient(
+                    base_url=embed_local_url,
+                    api_key=None,
+                    timeout=params["request_timeout"],
+                )
+
+        # OCR 仅支持云端视觉模型，使用独立凭据
+        self.ocr_client = _ProviderClient(
+            base_url=params["ocr_base_url"],
+            api_key=params["ocr_api_key"],
+            timeout=params["request_timeout"],
+        )
+
+        self._clients_signature = signature
+        for client in old_clients:
+            try:
+                client.close()
+            except Exception:
+                logger.warning("model_client_close_stale_failed")
 
     def _log_call(
         self,
@@ -129,13 +219,18 @@ class ModelClient:
         return [item["embedding"] for item in data["data"]]
 
     def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+        self._ensure_clients()
         start = time.perf_counter()
-        primary_model = model or self.settings.embedding_model
-        secondary_model = self.settings.local_embedding_model
+        svc = self._settings_service
+        if svc.get_runtime_value("embedding_provider") == "local":
+            primary_model = model or svc.get_runtime_value("local_embedding_model")
+        else:
+            primary_model = model or svc.get_runtime_value("embedding_model")
+        secondary_model = svc.get_runtime_value("local_embedding_model")
         payload_summary = {"text_count": len(texts)}
 
         try:
-            embeddings = self._embed_with_client(self.primary, texts, primary_model)
+            embeddings = self._embed_with_client(self.embed_primary, texts, primary_model)
             self._log_call(
                 "embed",
                 (time.perf_counter() - start) * 1000,
@@ -153,12 +248,12 @@ class ModelClient:
                 model=primary_model,
                 payload_summary=payload_summary,
             )
-            if not self.secondary:
+            if not self.embed_secondary:
                 raise
 
         start_secondary = time.perf_counter()
         try:
-            embeddings = self._embed_with_client(self.secondary, texts, secondary_model)
+            embeddings = self._embed_with_client(self.embed_secondary, texts, secondary_model)
             self._log_call(
                 "embed",
                 (time.perf_counter() - start_secondary) * 1000,
@@ -186,11 +281,15 @@ class ModelClient:
         max_tokens: int | None = None,
         timeout: float | None = None,
     ) -> str | AsyncIterator[str]:
+        self._ensure_clients()
         start = time.perf_counter()
-        request_timeout = timeout if timeout is not None else self.timeout
+        request_timeout = timeout if timeout is not None else self._settings_service.get_runtime_value("request_timeout")
 
-        primary_model = self.settings.llm_model
-        secondary_model = self.settings.local_llm_model
+        if self._settings_service.get_runtime_value("llm_provider") == "local":
+            primary_model = self._settings_service.get_runtime_value("local_llm_model")
+        else:
+            primary_model = self._settings_service.get_runtime_value("llm_model")
+        secondary_model = self._settings_service.get_runtime_value("local_llm_model")
 
         payload = {
             "model": primary_model,
@@ -211,7 +310,7 @@ class ModelClient:
 
         try:
             result = await self._chat_with_payload(
-                self.primary,
+                self.llm_primary,
                 payload,
                 stream=stream,
                 timeout=request_timeout,
@@ -233,7 +332,7 @@ class ModelClient:
                 model=primary_model,
                 payload_summary=payload_summary,
             )
-            if not self.secondary:
+            if not self.llm_secondary:
                 raise
 
         start_secondary = time.perf_counter()
@@ -241,7 +340,7 @@ class ModelClient:
         payload_summary["model_switched"] = True
         try:
             result = await self._chat_with_payload(
-                self.secondary,
+                self.llm_secondary,
                 payload,
                 stream=stream,
                 timeout=request_timeout,
@@ -312,14 +411,14 @@ class ModelClient:
                             first_chunk_latency_ms = int((time.perf_counter() - start_stream) * 1000)
                             logger.info(
                                 "llm_stream_first_chunk",
-                                provider="primary" if client is self.primary else "secondary",
+                                provider="primary" if client is self.llm_primary else "secondary",
                                 first_chunk_latency_ms=first_chunk_latency_ms,
                             )
                         chunk_count += 1
                         yield delta
             logger.info(
                 "llm_stream_done",
-                provider="primary" if client is self.primary else "secondary",
+                provider="primary" if client is self.llm_primary else "secondary",
                 chunk_count=chunk_count,
                 first_chunk_latency_ms=first_chunk_latency_ms,
                 total_latency_ms=int((time.perf_counter() - start_stream) * 1000),
@@ -355,7 +454,7 @@ class ModelClient:
                 ],
                 "temperature": 0,
             },
-            timeout=self.settings.ocr_timeout_seconds,
+            timeout=self._settings_service.get_runtime_value("ocr_timeout_seconds"),
         )
         response.raise_for_status()
         data = response.json()
@@ -363,13 +462,14 @@ class ModelClient:
 
     def ocr_image(self, image_bytes: bytes, model: str | None = None) -> str:
         """对单张图片（PNG 字节）做 OCR，返回识别文本。扫描件 PDF 逐页调用。"""
+        self._ensure_clients()
         start = time.perf_counter()
-        primary_model = model or self.settings.ocr_model
+        primary_model = model or self._settings_service.get_runtime_value("ocr_model")
         image_b64 = base64.b64encode(image_bytes).decode("ascii")
         payload_summary = {"image_bytes": len(image_bytes)}
 
         try:
-            text = self._ocr_with_client(self.primary, image_b64, primary_model)
+            text = self._ocr_with_client(self.ocr_client, image_b64, primary_model)
             self._log_call(
                 "ocr",
                 (time.perf_counter() - start) * 1000,
@@ -390,11 +490,9 @@ class ModelClient:
             raise
 
     def close(self) -> None:
-        self.primary.close()
-        if self.secondary:
-            self.secondary.close()
+        for client in self._all_clients():
+            client.close()
 
     async def aclose(self) -> None:
-        await self.primary.aclose()
-        if self.secondary:
-            await self.secondary.aclose()
+        for client in self._all_clients():
+            await client.aclose()

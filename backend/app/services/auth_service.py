@@ -4,16 +4,14 @@ import bcrypt
 import structlog
 from jose import JWTError, jwt
 
-from app.config import get_settings
 from app.models.schemas import TokenPayload
+from app.services.settings_service import SettingsService
 from app.stores.db import User
 from app.stores.user import UserStore
 
 logger = structlog.get_logger()
 
-
-def _get_settings():
-    return get_settings()
+_settings_service = SettingsService()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -34,21 +32,29 @@ def get_password_hash(password: str) -> str:
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
-    settings = _get_settings()
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.jwt_access_token_expire_minutes)
+        expire = datetime.utcnow() + timedelta(
+            minutes=_settings_service.get_runtime_value("jwt_access_token_expire_minutes")
+        )
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    encoded_jwt = jwt.encode(
+        to_encode,
+        _settings_service.get_runtime_value("jwt_secret_key"),
+        algorithm=_settings_service.get_runtime_value("jwt_algorithm"),
+    )
     return encoded_jwt
 
 
 def decode_access_token(token: str) -> TokenPayload | None:
-    settings = _get_settings()
     try:
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(
+            token,
+            _settings_service.get_runtime_value("jwt_secret_key"),
+            algorithms=[_settings_service.get_runtime_value("jwt_algorithm")],
+        )
         user_id = payload.get("sub")
         if user_id is None:
             return None

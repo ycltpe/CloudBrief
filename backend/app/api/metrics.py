@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.dependencies import require_role
 from app.metrics import MODEL_UP, metrics_response
 from app.models.schemas import UserOut
+from app.services.settings_service import SettingsService
 
 router = APIRouter(tags=["metrics"])
 
@@ -24,6 +25,7 @@ async def metrics(
 async def health_models():
     """探测 Embedding / Rerank / LLM 三个模型的可用性。"""
     settings = get_settings()
+    settings_service = SettingsService()
     model_client = ModelClient(settings)
     results = {}
     start = time.perf_counter()
@@ -36,10 +38,10 @@ async def health_models():
                 timeout=10,
             )
             results["embed"] = {"up": True}
-            MODEL_UP.labels(provider=settings.llm_provider, model="embed").set(1)
+            MODEL_UP.labels(provider=settings_service.get_runtime_value("llm_provider"), model="embed").set(1)
         except Exception as exc:
             results["embed"] = {"up": False, "error": str(exc)}
-            MODEL_UP.labels(provider=settings.llm_provider, model="embed").set(0)
+            MODEL_UP.labels(provider=settings_service.get_runtime_value("llm_provider"), model="embed").set(0)
 
         # LLM 探测
         try:
@@ -48,14 +50,13 @@ async def health_models():
                 timeout=10,
             )
             results["llm"] = {"up": True}
-            MODEL_UP.labels(provider=settings.llm_provider, model="llm").set(1)
+            MODEL_UP.labels(provider=settings_service.get_runtime_value("llm_provider"), model="llm").set(1)
         except Exception as exc:
             results["llm"] = {"up": False, "error": str(exc)}
-            MODEL_UP.labels(provider=settings.llm_provider, model="llm").set(0)
+            MODEL_UP.labels(provider=settings_service.get_runtime_value("llm_provider"), model="llm").set(0)
 
         # Rerank 探测
         try:
-            from app.services.settings_service import SettingsService
             from app.stages.adapters.reranker_adapter import create_reranker_adapter
 
             reranker = create_reranker_adapter(settings, SettingsService())
@@ -64,10 +65,10 @@ async def health_models():
                 timeout=10,
             )
             results["rerank"] = {"up": True}
-            MODEL_UP.labels(provider=settings.reranker_provider or "unknown", model="rerank").set(1)
+            MODEL_UP.labels(provider=settings_service.get_runtime_value("reranker_provider") or "unknown", model="rerank").set(1)
         except Exception as exc:
             results["rerank"] = {"up": False, "error": str(exc)}
-            MODEL_UP.labels(provider=settings.reranker_provider or "unknown", model="rerank").set(0)
+            MODEL_UP.labels(provider=settings_service.get_runtime_value("reranker_provider") or "unknown", model="rerank").set(0)
 
         return {
             "healthy": all(r["up"] for r in results.values()),

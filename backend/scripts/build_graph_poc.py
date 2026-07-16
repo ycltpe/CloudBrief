@@ -4,7 +4,7 @@
     uv run python scripts/build_graph_poc.py
 
 前置条件：
-    1. .env 中 DASHSCOPE_API_KEY 有效。
+    1. .env 中 LLM_API_KEY 有效。
     2. Neo4j 已启动（docker compose up -d neo4j）。
     3. 已安装 graphrag 可选依赖（uv sync --extra graphrag）。
 """
@@ -286,8 +286,8 @@ async def main() -> None:
     print("=" * 60)
 
     settings = get_settings()
-    if not settings.dashscope_api_key.get_secret_value():
-        print("错误：DASHSCOPE_API_KEY 未配置")
+    if not (settings.llm_api_key and settings.llm_api_key.get_secret_value()):
+        print("错误：LLM_API_KEY 未配置")
         sys.exit(1)
 
     # 图抽取使用轻量模型加速，答案生成使用配置模型

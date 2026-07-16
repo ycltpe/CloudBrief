@@ -12,6 +12,7 @@ from fastapi import Request
 from app.celery_app import celery_app
 from app.config import get_settings
 from app.models.schemas import DashboardRecentTask, IndexStep, IndexTaskStatus
+from app.services.settings_service import SettingsService
 
 logger = structlog.get_logger()
 
@@ -21,6 +22,7 @@ class IndexService:
 
     def __init__(self, task_step_store=None):
         self.settings = get_settings()
+        self.settings_service = SettingsService()
         from app.stores.index_task_step import IndexTaskStepStore
 
         self.task_step_store = task_step_store or IndexTaskStepStore()
@@ -51,7 +53,7 @@ class IndexService:
 
     def _record_recent_task(self, task_id: str, task_type: str = "rebuild", kb_id: str = "default") -> None:
         """把新触发任务记录到 Redis 有序集合，供 Dashboard 展示最近任务。"""
-        redis_client = redis.from_url(self.settings.redis_url)
+        redis_client = redis.from_url(self.settings_service.get_runtime_value("redis_url"))
         try:
             now = datetime.utcnow()
             payload = json.dumps(
@@ -69,7 +71,7 @@ class IndexService:
 
     def get_recent_tasks(self, limit: int = 5) -> list[DashboardRecentTask]:
         """读取最近触发的索引重建任务列表，并补充当前 Celery 状态。"""
-        redis_client = redis.from_url(self.settings.redis_url)
+        redis_client = redis.from_url(self.settings_service.get_runtime_value("redis_url"))
         try:
             raw_items = redis_client.zrevrange("index:recent_tasks", 0, limit - 1)
         except Exception as exc:
@@ -134,7 +136,7 @@ class IndexService:
         request: Request | None = None,
         last_event_id: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        redis_client = aioredis.from_url(self.settings.redis_url)
+        redis_client = aioredis.from_url(self.settings_service.get_runtime_value("redis_url"))
         channel = f"index:task:{task_id}"
         pubsub = redis_client.pubsub()
         await pubsub.subscribe(channel)

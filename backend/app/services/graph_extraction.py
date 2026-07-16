@@ -15,6 +15,7 @@ from app.models.graph_schemas import (
     Relation,
     RelationType,
 )
+from app.services.settings_service import SettingsService
 
 if TYPE_CHECKING:
     from app.clients.model_client import ModelClient
@@ -86,6 +87,7 @@ class GraphExtractionService:
     def __init__(self, model_client: ModelClient):
         self.model_client = model_client
         self.settings = get_settings()
+        self.settings_service = SettingsService()
 
     async def extract(
         self,
@@ -117,7 +119,7 @@ class GraphExtractionService:
                 ],
                 stream=False,
                 temperature=0.1,
-                timeout=self.settings.graphrag_timeout_seconds,
+                timeout=self.settings_service.get_runtime_value("graphrag_timeout_seconds"),
             )
             cleaned = _sanitize_json_output(response)
             diagnostics["batches"] += 1
@@ -161,7 +163,7 @@ class GraphExtractionService:
             ],
             stream=False,
             temperature=0.3,
-            timeout=self.settings.graphrag_timeout_seconds,
+            timeout=self.settings_service.get_runtime_value("graphrag_timeout_seconds"),
         )
 
         cleaned = _sanitize_json_output(response)

@@ -45,7 +45,7 @@ class KbService:
         self.settings_service = settings_service or SettingsService()
         self.graph_schema_store = graph_schema_store or GraphSchemaStore()
         self.settings = get_settings()
-        self.storage_path = Path(self.settings.kb_storage_path)
+        self.storage_path = Path(self.settings_service.get_runtime_value("kb_storage_path"))
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
@@ -179,8 +179,9 @@ class KbService:
 
         contents = upload_file.file.read()
         size = len(contents)
-        if size > self.settings.kb_max_file_size:
-            raise ValueError(f"文件大小超过限制 {self.settings.kb_max_file_size / 1024 / 1024:.0f}MB")
+        max_file_size = self.settings_service.get_runtime_value("kb_max_file_size")
+        if size > max_file_size:
+            raise ValueError(f"文件大小超过限制 {max_file_size / 1024 / 1024:.0f}MB")
 
         content_hash = hashlib.sha256(contents).hexdigest()
         stored_name = self._safe_stored_name(original_name)

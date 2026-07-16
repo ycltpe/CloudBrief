@@ -25,7 +25,7 @@ logger = structlog.get_logger()
 
 
 def _get_redis_client():
-    return redis.from_url(get_settings().redis_url)
+    return redis.from_url(SettingsService().get_runtime_value("redis_url"))
 
 
 def _publish_step(
@@ -207,6 +207,9 @@ def rebuild_index_task(self, kb_id: str = "default"):
             log_on_complete=lambda out: f"文本切分完成：{len(out.chunks)} 个 chunk",
         )
         chunks = chunking_output.chunks
+        if not chunks:
+            # 全空重建不得产出空索引：中止任务，原活跃索引保持不变
+            raise ValueError("切分后无有效 chunk，已中止重建（原索引保持不变）")
 
         # 3. Embedding（按批心跳，避免大库长时间无反馈）
         embedding_stage = EmbeddingStage(model_client, settings=settings)
@@ -224,14 +227,17 @@ def rebuild_index_task(self, kb_id: str = "default"):
             ),
             log_on_complete=lambda out: f"Embedding 生成完成：{len(out.embeddings)} 条向量",
         )
-        embeddings = embedding_output.embeddings
+        # EmbeddingStage 会跳过空内容的 chunk，按 chunk_id 对齐避免位置错位
+        emb_by_chunk = {e.chunk_id: e.embedding for e in embedding_output.embeddings}
+        chunks = [c for c in chunks if c.chunk_id in emb_by_chunk]
+        vectors = [emb_by_chunk[c.chunk_id] for c in chunks]
 
         # 4-6. 写入 Milvus、重建 BM25、原子切换需在互斥锁内完成
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        collection_name = f"{settings.milvus_collection}_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}"
-        bm25_path = Path(settings.bm25_index_path).parent / f"bm25_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}.pkl"
+        collection_name = f"{settings_service.get_runtime_value('milvus_collection')}_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}"
+        bm25_path = Path(settings_service.get_runtime_value("bm25_index_path")).parent / f"bm25_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}.pkl"
         metadata_store = IndexMetadataStore()
-        milvus_store = MilvusStore(settings.milvus_uri, collection_name, dim=runtime_embedding_dim)
+        milvus_store = MilvusStore(settings_service.get_runtime_value("milvus_uri"), collection_name, dim=runtime_embedding_dim)
         bm25_store = BM25Store(bm25_path)
 
         lock = redis_client.lock(
@@ -243,7 +249,7 @@ def rebuild_index_task(self, kb_id: str = "default"):
             with lock:
                 def _write_milvus():
                     milvus_store.create_collection()
-                    milvus_store.insert_chunks(chunks, [e.embedding for e in embeddings])
+                    milvus_store.insert_chunks(chunks, vectors)
                     return milvus_store
 
                 _run_step(
@@ -327,11 +333,11 @@ def index_file_task(self, file_id: int):
     runtime_embedding_model = settings_service.get_runtime_value("embedding_model")
     runtime_embedding_dim = settings_service.get_runtime_value("embedding_dim")
     try:
-        file_path = Path(settings.kb_storage_path) / kb_file.relative_path
+        file_path = Path(settings_service.get_runtime_value("kb_storage_path")) / kb_file.relative_path
         if not file_path.exists():
             raise FileNotFoundError(f"文件不存在: {file_path}")
 
-        data_dir = Path(settings.kb_storage_path).parent
+        data_dir = Path(settings_service.get_runtime_value("kb_storage_path")).parent
         parser = build_parser(settings, data_dir, model_client=model_client)
         parse_beat = _make_heartbeat(redis_client, task_id, "parse")
 
@@ -361,7 +367,8 @@ def index_file_task(self, file_id: int):
             log_on_complete=lambda out: f"文本切分完成：{len(out.chunks)} 个 chunk",
         )
         new_chunks = chunking_output.chunks
-        new_source_ids = {c.source_id for c in new_chunks}
+        if not new_chunks:
+            raise ValueError("切分后无有效 chunk")
 
         # 3. Embedding（按批心跳）
         embedding_stage = EmbeddingStage(model_client, settings=settings)
@@ -379,13 +386,19 @@ def index_file_task(self, file_id: int):
             ),
             log_on_complete=lambda out: f"Embedding 生成完成：{len(out.embeddings)} 条向量",
         )
-        new_embeddings = embedding_output.embeddings
+        # EmbeddingStage 会跳过空内容的 chunk，按 chunk_id 对齐避免位置错位
+        emb_by_chunk = {e.chunk_id: e.embedding for e in embedding_output.embeddings}
+        new_chunks = [c for c in new_chunks if c.chunk_id in emb_by_chunk]
+        if not new_chunks:
+            raise ValueError("Embedding 后无有效 chunk")
+        new_vectors = [emb_by_chunk[c.chunk_id] for c in new_chunks]
+        new_source_ids = {c.source_id for c in new_chunks}
 
         # 4. 合并现有索引 + 新文件（copy-on-write），并原子切换
         metadata_store = IndexMetadataStore()
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        collection_name = f"{settings.milvus_collection}_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}"
-        bm25_path = Path(settings.bm25_index_path).parent / f"bm25_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}.pkl"
+        collection_name = f"{settings_service.get_runtime_value('milvus_collection')}_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}"
+        bm25_path = Path(settings_service.get_runtime_value("bm25_index_path")).parent / f"bm25_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}.pkl"
 
         lock = redis_client.lock(
             f"index:active_switch_lock:{kb_id}",
@@ -397,7 +410,7 @@ def index_file_task(self, file_id: int):
                 active = metadata_store.get_active(kb_id)
                 existing: list[tuple[Chunk, list[float]]] = []
                 if active:
-                    milvus_store = MilvusStore(settings.milvus_uri, active.collection_name)
+                    milvus_store = MilvusStore(settings_service.get_runtime_value("milvus_uri"), active.collection_name)
                     existing = _run_step(
                         redis_client,
                         task_id,
@@ -406,9 +419,9 @@ def index_file_task(self, file_id: int):
                         log_on_complete=lambda items: f"加载现有索引：{len(items)} 条 chunk",
                     )
                     # 维度一致性校验：活跃索引与当前 Embedding 模型输出维度不一致时无法直接合并
-                    if existing and new_embeddings:
+                    if existing and new_vectors:
                         active_dim = len(existing[0][1])
-                        expected_dim = len(new_embeddings[0].embedding)
+                        expected_dim = len(new_vectors[0])
                         if active_dim != expected_dim:
                             raise ValueError(
                                 f"活跃索引维度 ({active_dim}) 与当前 Embedding 模型输出维度 ({expected_dim}) 不一致，"
@@ -420,11 +433,9 @@ def index_file_task(self, file_id: int):
                     (chunk, emb) for chunk, emb in existing if chunk.source_id not in new_source_ids
                 ]
                 combined_chunks = [c for c, _ in filtered_existing] + new_chunks
-                combined_embeddings = [e for _, e in filtered_existing] + [
-                    e.embedding for e in new_embeddings
-                ]
+                combined_embeddings = [e for _, e in filtered_existing] + new_vectors
 
-                milvus_store = MilvusStore(settings.milvus_uri, collection_name, dim=runtime_embedding_dim)
+                milvus_store = MilvusStore(settings_service.get_runtime_value("milvus_uri"), collection_name, dim=runtime_embedding_dim)
 
                 def _write_milvus():
                     milvus_store.create_collection()

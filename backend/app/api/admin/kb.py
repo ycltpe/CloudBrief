@@ -27,6 +27,7 @@ from app.models.schemas import (
 )
 from app.services.graph_extraction import GraphExtractionService
 from app.services.kb_service import KbService
+from app.services.settings_service import SettingsService
 from app.stores.db import KbUserAccess
 from app.stores.graph_schema_store import GraphSchemaStore
 from app.stores.index_metadata import IndexMetadataStore
@@ -282,7 +283,7 @@ async def recommend_kb_graph_schema(
     if not active:
         raise HTTPException(status_code=400, detail="NO_ACTIVE_INDEX")
 
-    milvus_store = MilvusStore(settings.milvus_uri, active.collection_name)
+    milvus_store = MilvusStore(SettingsService().get_runtime_value("milvus_uri"), active.collection_name)
     all_chunks = [chunk for chunk, _ in milvus_store.get_all_chunks()]
     kb_chunks = [c for c in all_chunks if c.source_id.startswith(f"kb/dir_{directory_id}/")]
     if not kb_chunks:

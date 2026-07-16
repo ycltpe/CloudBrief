@@ -3,6 +3,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
 from app.config import get_settings
+from app.services.settings_service import SettingsService
 from app.stages.base import AbstractStage, RetrievalResult
 
 
@@ -22,12 +23,13 @@ class LCGenerationStage(AbstractStage[LCGenerationInput, LCGenerationOutput]):
     def __init__(self):
         settings = get_settings()
         self.settings = settings
+        self.settings_service = SettingsService()
         self.llm = ChatOpenAI(
-            model=settings.llm_model,
-            base_url=str(settings.model_base_url),
-            api_key=settings.dashscope_api_key.get_secret_value(),
+            model=self.settings_service.get_runtime_value("llm_model"),
+            base_url=str(self.settings_service.get_runtime_value("llm_base_url")),
+            api_key=self.settings_service.get_runtime_value("llm_api_key"),
             temperature=0.3,
-            timeout=settings.request_timeout,
+            timeout=self.settings_service.get_runtime_value("request_timeout"),
         )
 
     @property
@@ -49,7 +51,9 @@ class LCGenerationStage(AbstractStage[LCGenerationInput, LCGenerationOutput]):
         user_prompt = f"证据：\n\n{evidence_text}\n\n用户问题：{input_data.question}\n\n请用中文回答。"
 
         messages = [("system", system_prompt)]
-        for turn in input_data.history[-self.settings.max_history_rounds :]:
+        max_history_rounds = self.settings_service.get_runtime_value("max_history_rounds")
+        history = input_data.history[-max_history_rounds:] if max_history_rounds > 0 else []
+        for turn in history:
             messages.append((turn["role"], turn["content"]))
         messages.append(("user", user_prompt))
 

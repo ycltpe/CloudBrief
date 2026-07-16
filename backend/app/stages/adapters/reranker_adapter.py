@@ -135,8 +135,8 @@ def create_reranker_adapter(
 
     if provider == "dashscope":
         return DashScopeReranker(
-            base_url=str(settings.rerank_base_url),
-            api_key=settings.dashscope_api_key.get_secret_value(),
+            base_url=str(settings_service.get_runtime_value("rerank_base_url")),
+            api_key=settings_service.get_runtime_value("reranker_api_key"),
             model=settings_service.get_runtime_value("reranker_model"),
             timeout=timeout,
         )

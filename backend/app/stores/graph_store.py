@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from app.config import get_settings
-
 if TYPE_CHECKING:
     from neo4j import AsyncDriver
 
@@ -48,14 +46,20 @@ class GraphStore:
             logger.warning("neo4j_driver_unavailable", reason="optional_dependency_not_installed")
             return cls(driver=None)
 
-        settings = get_settings()
+        from app.services.settings_service import SettingsService
+
+        settings_service = SettingsService()
+        neo4j_uri = settings_service.get_runtime_value("neo4j_uri")
         try:
             driver = AsyncGraphDatabase.driver(
-                settings.neo4j_uri,
-                auth=(settings.neo4j_user, settings.neo4j_password),
+                neo4j_uri,
+                auth=(
+                    settings_service.get_runtime_value("neo4j_user"),
+                    settings_service.get_runtime_value("neo4j_password"),
+                ),
             )
             await driver.verify_connectivity()
-            logger.info("neo4j_driver_connected", uri=settings.neo4j_uri)
+            logger.info("neo4j_driver_connected", uri=neo4j_uri)
             return cls(driver=driver)
         except Exception as exc:
             logger.warning("neo4j_driver_failed", error=str(exc))

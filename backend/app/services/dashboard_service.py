@@ -10,7 +10,6 @@ from pymilvus import MilvusClient
 from sqlalchemy import text
 
 from app.celery_app import celery_app
-from app.config import get_settings
 from app.models.schemas import (
     AdminDashboardResponse,
     DashboardDependencyStatus,
@@ -26,6 +25,7 @@ from app.models.schemas import (
     DashboardSystemHealthResponse,
 )
 from app.services.index_service import IndexService
+from app.services.settings_service import SettingsService
 from app.stores.conversation import ConversationStore
 from app.stores.db import get_engine
 from app.stores.eval_results import EvalResultStore
@@ -308,9 +308,8 @@ class DashboardService:
 
     def _check_redis(self) -> DashboardDependencyStatus:
         def _ping():
-            settings = get_settings()
             client = redis.from_url(
-                settings.redis_url,
+                SettingsService().get_runtime_value("redis_url"),
                 socket_connect_timeout=3,
                 socket_timeout=3,
             )
@@ -323,8 +322,7 @@ class DashboardService:
 
     def _check_milvus(self) -> DashboardDependencyStatus:
         def _ping():
-            settings = get_settings()
-            client = MilvusClient(uri=settings.milvus_uri)
+            client = MilvusClient(uri=SettingsService().get_runtime_value("milvus_uri"))
             try:
                 client.list_collections()
             finally:

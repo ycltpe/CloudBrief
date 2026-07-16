@@ -18,23 +18,31 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # 模型配置
-    dashscope_api_key: SecretStr
-    model_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    rerank_base_url: str = "https://dashscope.aliyuncs.com/compatible-api/v1"
-
-    embedding_model: str = "text-embedding-v3"
-    embedding_dim: int = 1536
-    reranker_model: str = "qwen3-rerank"
-    reranker_provider: Literal["dashscope", "local"] = "dashscope"
-    local_reranker_url: str = "http://127.0.0.1:8000/v1"
-    local_reranker_model: str = "Qwen/Qwen3-Reranker-0.6B"
-    llm_model: str = "qwen3.7-plus"
+    # 大语言模型（LLM）：provider=dashscope 走云端（保留到本地的失败降级），
+    # provider=local 走本地且不回退云端，避免私有化数据外发
     llm_provider: Literal["dashscope", "local"] = "dashscope"
+    llm_api_key: SecretStr | None = None
+    llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    llm_model: str = "qwen3.7-plus"
     local_llm_url: str = "http://127.0.0.1:8000/v1"
     local_llm_model: str = "Qwen/Qwen2.5-7B-Instruct"
+
+    # 向量模型（Embedding）：切换 provider/模型/维度后必须重建索引
+    embedding_provider: Literal["dashscope", "local"] = "dashscope"
+    embedding_api_key: SecretStr | None = None
+    embedding_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    embedding_model: str = "text-embedding-v3"
+    embedding_dim: int = 1536
     local_embedding_url: str = "http://127.0.0.1:8000/v1"
     local_embedding_model: str = "BAAI/bge-m3"
+
+    # Reranker 模型
+    reranker_provider: Literal["dashscope", "local"] = "dashscope"
+    reranker_api_key: SecretStr | None = None
+    rerank_base_url: str = "https://dashscope.aliyuncs.com/compatible-api/v1"
+    reranker_model: str = "qwen3-rerank"
+    local_reranker_url: str = "http://127.0.0.1:8000/v1"
+    local_reranker_model: str = "Qwen/Qwen3-Reranker-0.6B"
 
     # 存储配置
     milvus_uri: str = "http://localhost:19531"
@@ -65,6 +73,14 @@ class Settings(BaseSettings):
     request_timeout: int = 30
     graphrag_timeout_seconds: float = 120.0
 
+    # GraphRAG 监控阈值（超过/低于时输出 WARN 日志）
+    graphrag_slow_query_threshold_ms: int = 500
+    graphrag_freshness_threshold_days: int = 7
+    graphrag_min_extraction_entities: int = 1
+
+    # 功能开关
+    auto_index_on_upload: bool = True
+
     # Embedding 批大小（DashScope text-embedding-v3 上限为 10）
     embedding_batch_size: int = 10
 
@@ -76,6 +92,8 @@ class Settings(BaseSettings):
 
     # 扫描件 OCR：对无文字层 PDF 页调用视觉模型识别（DashScope qwen-vl-ocr）
     ocr_enabled: bool = True
+    ocr_api_key: SecretStr | None = None
+    ocr_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     ocr_model: str = "qwen-vl-ocr-latest"
     ocr_timeout_seconds: float = 120.0
     pdf_ocr_dpi: int = 200

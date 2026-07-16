@@ -124,10 +124,16 @@ def patched_indexing_env(tmp_path, monkeypatch):
     graph_schema_store.get_by_directory_id.return_value = None
 
     settings_service = MagicMock()
-    settings_service.get_runtime_value.side_effect = lambda key: {
+    runtime_values = {
         "embedding_model": settings.embedding_model,
         "embedding_dim": settings.embedding_dim,
-    }.get(key)
+        "redis_url": settings.redis_url,
+        "milvus_uri": settings.milvus_uri,
+        "milvus_collection": settings.milvus_collection,
+        "bm25_index_path": str(settings.bm25_index_path),
+        "kb_storage_path": str(storage),
+    }
+    settings_service.get_runtime_value.side_effect = lambda key: runtime_values.get(key)
 
     patches = [
         patch("app.tasks.indexing.get_settings", return_value=settings),
@@ -241,7 +247,10 @@ def test_rebuild_task_aborts_when_no_documents():
         patch("app.tasks.indexing.MilvusStore") as milvus_cls,
         patch("app.tasks.indexing.IndexMetadataStore") as metadata_cls,
     ):
-        settings_service_cls.return_value.get_runtime_value.side_effect = ["model-x", 1024]
+        runtime_values = {"embedding_model": "model-x", "embedding_dim": 1024}
+        settings_service_cls.return_value.get_runtime_value.side_effect = (
+            lambda key: runtime_values.get(key)
+        )
         with pytest.raises(ValueError, match="未解析到任何有效文档"):
             rebuild_index_task.run(kb_id="default")
         milvus_cls.assert_not_called()

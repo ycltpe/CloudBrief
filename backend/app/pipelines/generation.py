@@ -153,7 +153,7 @@ class GenerationPipeline:
                 "llm_generation_failed",
                 error=str(exc),
                 model=self.settings_service.get_runtime_value("llm_model"),
-                provider=self.settings.llm_provider,
+                provider=self.settings_service.get_runtime_value("llm_provider"),
             )
             ERROR_TOTAL.labels(code="LLM_UNAVAILABLE", component="generation").inc()
             return GenerationPipelineOutput(
@@ -164,7 +164,7 @@ class GenerationPipeline:
         finally:
             latency_ms = int((time.perf_counter() - start) * 1000)
             GENERATION_LATENCY.labels(
-                provider=self.settings.llm_provider,
+                provider=self.settings_service.get_runtime_value("llm_provider"),
                 model=self.settings_service.get_runtime_value("llm_model"),
             ).observe(latency_ms)
 
@@ -296,7 +296,7 @@ class GenerationPipeline:
                 "llm_stream_failed",
                 error=str(exc),
                 model=self.settings_service.get_runtime_value("llm_model"),
-                provider=self.settings.llm_provider,
+                provider=self.settings_service.get_runtime_value("llm_provider"),
             )
             ERROR_TOTAL.labels(code="LLM_UNAVAILABLE", component="generation").inc()
             yield StreamEvent(
@@ -312,7 +312,7 @@ class GenerationPipeline:
         finally:
             latency_ms = int((time.perf_counter() - start) * 1000)
             GENERATION_LATENCY.labels(
-                provider=self.settings.llm_provider,
+                provider=self.settings_service.get_runtime_value("llm_provider"),
                 model=self.settings_service.get_runtime_value("llm_model"),
             ).observe(latency_ms)
 
@@ -347,7 +347,7 @@ class GenerationPipeline:
         )
 
     def _check_staleness(self, chunks: list[RetrievalResult]) -> bool:
-        threshold = timedelta(days=self.settings.stale_threshold_days)
+        threshold = timedelta(days=self.settings_service.get_runtime_value("stale_threshold_days"))
         now = datetime.utcnow()
         for chunk in chunks:
             updated_at = chunk.updated_at

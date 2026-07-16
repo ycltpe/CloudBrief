@@ -162,6 +162,10 @@ class SettingItemOut(BaseModel):
     type: str
     value: Any
     default: Any
+    source: str = "default"  # db / env / default
+    secret: bool = False
+    restart_required: bool = False
+    requires_reindex: bool = False
     options: list[str] | None = None
     min: int | float | None = None
     max: int | float | None = None

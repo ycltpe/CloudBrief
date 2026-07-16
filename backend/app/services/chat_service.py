@@ -65,7 +65,7 @@ class ChatService:
             if not (schema.entity_types or schema.relation_types):
                 return None
             stage = GraphRAGContextStage(self.graph_store, model_client=self.model_client)
-            timeout = getattr(self.settings, "graphrag_timeout_seconds", 5.0)
+            timeout = self.settings_service.get_runtime_value("graphrag_timeout_seconds")
             return await asyncio.wait_for(
                 stage.run(question, kb_id, schema=schema),
                 timeout=timeout,
@@ -265,7 +265,7 @@ class ChatService:
                 original_question=request.question,
                 rewritten_question=query,
                 kb_id=kb_id,
-                retrieval_adapter=self.settings.retrieval_adapter,
+                retrieval_adapter=self.settings_service.get_runtime_value("retrieval_adapter"),
                 is_fallback=is_fallback,
                 max_score=max((r.score for r in retrieval_results), default=0.0) if retrieval_results else None,
                 retrieval_results=retrieval_results,
@@ -540,7 +540,7 @@ class ChatService:
                     original_question=request.question,
                     rewritten_question=query,
                     kb_id=kb_id,
-                    retrieval_adapter=self.settings.retrieval_adapter,
+                    retrieval_adapter=self.settings_service.get_runtime_value("retrieval_adapter"),
                     is_fallback=is_fallback,
                     max_score=max((r.score for r in retrieval_results), default=0.0) if retrieval_results else None,
                     retrieval_results=retrieval_results,

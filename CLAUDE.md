@@ -149,16 +149,30 @@ npm run lint
 
 ### 运行期配置
 
-管理员可在后台调整 `refusal_threshold`、`stale_threshold_days`、`max_history_rounds`、`request_timeout`、`retrieval_adapter`、`parser`、`llm_model`、`embedding_model`、`embedding_dim`、`reranker_provider`、`reranker_model`、`local_reranker_url`、`local_reranker_model`、`auto_index_on_upload` 等参数，存储于 MySQL `system_settings` 表，运行时优先读取数据库，其次回退到 `.env` 默认值。
+所有配置按「数据库覆盖 → `.env` → 代码默认值」三级生效，统一入口是 `SettingsService.get_runtime_value(key)`：
+
+- **数据库覆盖**：管理后台「系统设置」页保存的值存于 MySQL `system_settings` 表，优先级最高。DB 读取带进程级缓存（全量快照 + 60s TTL），保存/恢复默认时自动失效；DB 不可用时负缓存空快照并回退，不阻断业务链路。
+- **`.env`**：pydantic `Settings`（`app/config.py`）显式设置的字段，作为中间层。
+- **代码默认值**：`config.py` 字段默认值兜底。
+
+注册表约 55 项配置，按 11 个分组展示（业务阈值 / 功能开关 / 适配器 / 大语言模型 / 向量模型 / Reranker 模型 / 文档解析 / GraphRAG 监控 / 存储连接 / 认证与安全 / 系统）。三个模型组各自独立配置 Provider（`dashscope` 云端 / `local` 本地）、云端密钥与端点、本地服务地址，`local` 为权威路径不回退云端；前端按 Provider 值条件渲染云端/本地字段块，每项带三个语义标记：
+
+- `secret`（如 `llm_api_key`、`jwt_secret_key`、`mysql_url`、`neo4j_password`）：API 出参固定脱敏为 `********`；前端提交空值或掩码值视为不修改，防止脱敏值写回覆盖真实密钥。
+- `restart_required`（连接串、端口、日志级别等启动期读取项）：DB 覆盖在下次重启后生效。`mysql_url` 为自举读取：`app/stores/db.py` 先用 .env 连接串查出 DB 覆盖值，再以覆盖值创建连接池，失败时回退 .env。
+- `requires_reindex`（`embedding_model`、`embedding_dim`、`parser`）：修改后需重建索引才能对存量数据生效，前端保存时会弹确认。
+
+管理接口：`GET/PUT /admin/settings`、`GET /admin/settings/runtime/{key}`、`DELETE /admin/settings/{key}`（删除 DB 覆盖，恢复 .env/默认值）。
+
+**开发约束**：业务代码新增配置读取时，运行期生效的值必须走 `SettingsService.get_runtime_value()`，禁止直接读 `get_settings()` 的业务字段（启动期一次性读取的连接/端口类除外，且必须在注册表标记 `restart_required`）；新增配置项需同时在 `config.py` 声明字段（保证 .env 可表达）并在 `settings_service.py` 注册 `SettingMeta`。
 
 ### 关键配置
 
-配置项集中在项目根目录 `.env`，从 `.env.example` 复制后填写：
+配置项集中在项目根目录 `.env`（作为三级链中的兜底默认层，均可在管理后台覆盖），从 `.env.example` 复制后填写：
 
-- `DASHSCOPE_API_KEY`：模型调用密钥。
-- `MODEL_BASE_URL` / `RERANK_BASE_URL`：DashScope 端点，也可切换为本地 vLLM/Ollama。
-- `LLM_PROVIDER` / `RERANKER_PROVIDER`：`dashscope` 或 `local`。
-- `MILVUS_URI`、`REDIS_URL`、`MYSQL_URL`、`BM25_INDEX_PATH`：存储连接。
+- `LLM_API_KEY` / `EMBEDDING_API_KEY` / `RERANKER_API_KEY` / `OCR_API_KEY`：各模型组的云端调用密钥（冗余设计，各用各的）。
+- `LLM_BASE_URL` / `EMBEDDING_BASE_URL` / `RERANK_BASE_URL` / `OCR_BASE_URL`：各组云端端点。
+- `LLM_PROVIDER` / `EMBEDDING_PROVIDER` / `RERANKER_PROVIDER`：`dashscope` 或 `local`。`local` 为权威路径、不回退云端；`dashscope` 模式下本地端点作为失败降级。切换 `EMBEDDING_PROVIDER` 后必须重建索引（向量空间与维度随模型变化）。
+- `MILVUS_URI`、`REDIS_URL`、`MYSQL_URL`、`BM25_INDEX_PATH`：存储连接（启动期读取，后台覆盖需重启生效）。
 - `REFUSAL_THRESHOLD`、`STALE_THRESHOLD_DAYS`、`MAX_HISTORY_ROUNDS`、`REQUEST_TIMEOUT`：业务阈值。
 - `PDF_BATCH_PAGE_THRESHOLD`（默认 50）、`PDF_PAGE_BATCH_SIZE`（默认 25）：大 PDF 页级分批解析阈值与批大小。
 - `OCR_ENABLED`（默认 true）、`OCR_MODEL`（默认 `qwen-vl-ocr-latest`）、`OCR_TIMEOUT_SECONDS`（默认 120）、`PDF_OCR_DPI`（默认 200）：扫描件 OCR 开关与参数。
@@ -177,7 +191,7 @@ docker compose --profile reranker up -d
 
 ## 开发注意事项
 
-- 后端启动前需确保 `.env` 存在且 `DASHSCOPE_API_KEY` 有效，否则模型调用会失败。
+- 后端启动前需确保 `.env` 存在且各模型组的 `*_API_KEY` 有效，否则模型调用会失败。
 - 首次运行问答前必须先执行一次索引重建（通过前端「重建索引」按钮或调用 `POST /index/rebuild`），否则 `RetrievalPipeline` 会抛出 `No active index found`。
 - Celery Worker 必须监听 `kb.index.rebuild` 和 `kb.index.single` 队列，否则索引任务不会被消费。
 - 前端新增页面、组件、弹窗等 UI 必须同时支持明亮和暗黑模式：使用 Tailwind 语义化颜色变量（如 `bg-card`、`text-card-foreground`、`dark:*`），并在 `globals.css` 中维护 `:root` 与 `.dark` 两套变量。

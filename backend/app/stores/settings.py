@@ -53,3 +53,8 @@ class SettingsStore:
         for key, value in items.items():
             results.append(self.set(key, value, updated_by=updated_by))
         return results
+
+    def delete(self, key: str) -> None:
+        with self.get_session() as session:
+            session.query(SystemSetting).filter(SystemSetting.key == key).delete()
+            session.commit()

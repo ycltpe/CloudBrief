@@ -29,7 +29,7 @@ docker compose up -d
 
 ```bash
 cp .env.example .env
-# 编辑 .env，填入 DASHSCOPE_API_KEY
+# 编辑 .env，填入各模型组的 API Key（LLM_API_KEY 等）
 ```
 
 ### 3. 安装后端依赖

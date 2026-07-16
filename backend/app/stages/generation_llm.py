@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from app.clients.model_client import ModelClient
 from app.config import get_settings
 from app.models.graph_schemas import SubgraphContext
+from app.services.settings_service import SettingsService
 from app.stages.base import AbstractStage, RetrievalResult
 
 
@@ -25,6 +26,7 @@ class GenerationLLMStage(AbstractStage[GenerationInput, GenerationOutput]):
     def __init__(self, model_client: ModelClient):
         self.model_client = model_client
         self.settings = get_settings()
+        self.settings_service = SettingsService()
 
     @property
     def name(self) -> str:
@@ -63,8 +65,11 @@ class GenerationLLMStage(AbstractStage[GenerationInput, GenerationOutput]):
         messages = [
             {"role": "system", "content": system_prompt},
         ]
-        # 加入最近历史（简化为 QA 对）
-        for turn in input_data.history[-self.settings.max_history_rounds :]:
+        # 加入最近历史（简化为 QA 对），轮数上限走运行期配置
+        # 注意 history[-0:] 会返回全量列表，0 轮必须显式取空
+        max_history_rounds = self.settings_service.get_runtime_value("max_history_rounds")
+        history = input_data.history[-max_history_rounds:] if max_history_rounds > 0 else []
+        for turn in history:
             messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_prompt})
         return messages

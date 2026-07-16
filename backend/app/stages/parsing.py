@@ -394,21 +394,26 @@ class NativeParser:
         return None
 
 
-def build_parser(settings: Settings, data_dir: Path, model_client=None):
+def build_parser(settings: Settings, data_dir: Path, model_client=None, settings_service=None):
     """按运行配置构造解析器。全量重建与单文件索引必须共用同一选择逻辑。
 
+    解析器与 OCR/PDF 参数走运行期配置（DB → .env → 默认）；
     提供 model_client 且启用 OCR 时，无文字层 PDF 页回退到视觉模型识别。
     """
-    if settings.parser == "llamaindex":
+    from app.services.settings_service import SettingsService
+
+    svc = settings_service or SettingsService()
+    if svc.get_runtime_value("parser") == "llamaindex":
         from app.stages.adapters.li_parsing import LlamaIndexParserAdapter
 
         return LlamaIndexParserAdapter(data_dir)
-    ocr_fn = model_client.ocr_image if (model_client is not None and settings.ocr_enabled) else None
+    ocr_enabled = svc.get_runtime_value("ocr_enabled")
+    ocr_fn = model_client.ocr_image if (model_client is not None and ocr_enabled) else None
     return NativeParser(
         data_dir,
-        pdf_batch_page_threshold=settings.pdf_batch_page_threshold,
-        pdf_page_batch_size=settings.pdf_page_batch_size,
+        pdf_batch_page_threshold=svc.get_runtime_value("pdf_batch_page_threshold"),
+        pdf_page_batch_size=svc.get_runtime_value("pdf_page_batch_size"),
         ocr_fn=ocr_fn,
-        pdf_ocr_dpi=settings.pdf_ocr_dpi,
-        pdf_max_pages=settings.pdf_max_pages,
+        pdf_ocr_dpi=svc.get_runtime_value("pdf_ocr_dpi"),
+        pdf_max_pages=svc.get_runtime_value("pdf_max_pages"),
     )

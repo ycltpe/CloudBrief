@@ -155,8 +155,8 @@ npm run lint
 
 配置项集中在项目根目录 `.env`，从 `.env.example` 复制后填写：
 
-- `DASHSCOPE_API_KEY`：模型调用密钥。
-- `MODEL_BASE_URL` / `RERANK_BASE_URL`：DashScope 端点，也可切换为本地 vLLM/Ollama。
+- `LLM_API_KEY` / `EMBEDDING_API_KEY` / `RERANKER_API_KEY` / `OCR_API_KEY`：各模型组的云端调用密钥。
+- `LLM_BASE_URL` / `EMBEDDING_BASE_URL` / `RERANK_BASE_URL` / `OCR_BASE_URL`：各组云端端点。
 - `LLM_PROVIDER` / `RERANKER_PROVIDER`：`dashscope` 或 `local`。
 - `MILVUS_URI`、`REDIS_URL`、`MYSQL_URL`、`BM25_INDEX_PATH`：存储连接。
 - `REFUSAL_THRESHOLD`、`STALE_THRESHOLD_DAYS`、`MAX_HISTORY_ROUNDS`、`REQUEST_TIMEOUT`：业务阈值。
@@ -174,7 +174,7 @@ docker compose --profile reranker up -d
 
 ## 开发注意事项
 
-- 后端启动前需确保 `.env` 存在且 `DASHSCOPE_API_KEY` 有效，否则模型调用会失败。
+- 后端启动前需确保 `.env` 存在且各模型组的 `*_API_KEY` 有效，否则模型调用会失败。
 - 首次运行问答前必须先执行一次索引重建（通过前端「重建索引」按钮或调用 `POST /index/rebuild`），否则 `RetrievalPipeline` 会抛出 `No active index found`。
 - Celery Worker 必须监听 `kb.index.rebuild` 和 `kb.index.single` 队列，否则索引任务不会被消费。
 - 前端新增页面、组件、弹窗等 UI 必须同时支持明亮和暗黑模式：使用 Tailwind 语义化颜色变量（如 `bg-card`、`text-card-foreground`、`dark:*`），并在 `globals.css` 中维护 `:root` 与 `.dark` 两套变量。

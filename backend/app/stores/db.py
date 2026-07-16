@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import structlog
 from sqlalchemy import (
     Boolean,
     Column,
@@ -11,10 +12,13 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    text,
 )
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 from app.config import get_settings
+
+logger = structlog.get_logger()
 
 Base = declarative_base()
 
@@ -37,11 +41,33 @@ class User(Base):
     )
 
 
+def _resolve_mysql_url() -> str:
+    """mysql_url 的三级链自举：DB 覆盖存在时优先，但读取覆盖本身需要先连库。
+
+    因此先用 .env/默认值建临时连接读出覆盖值，再以生效值创建正式引擎。
+    仅一级自举，不递归；覆盖库不可达或表不存在（首次部署）时回退 .env。
+    """
+    env_url = get_settings().mysql_url
+    try:
+        bootstrap = create_engine(env_url, pool_pre_ping=True)
+        with bootstrap.connect() as conn:
+            row = conn.execute(
+                text("SELECT value FROM system_settings WHERE `key` = 'mysql_url' LIMIT 1")
+            ).first()
+        bootstrap.dispose()
+        if row and row[0]:
+            logger.info("mysql_url_db_override_applied")
+            return row[0]
+    except Exception as exc:
+        logger.warning("mysql_url_db_override_read_failed", error=str(exc))
+    return env_url
+
+
 def get_engine():
     global _engine
     if _engine is None:
         _engine = create_engine(
-            get_settings().mysql_url,
+            _resolve_mysql_url(),
             pool_pre_ping=True,
             echo=False,
         )

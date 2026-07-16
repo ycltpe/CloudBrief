@@ -1,13 +1,15 @@
 from celery import Celery
 
-from app.config import get_settings
+from app.services.settings_service import SettingsService
 
-settings = get_settings()
+# broker/backend 在进程启动期读取（DB → .env → 默认），DB 覆盖在下次重启生效
+_settings_service = SettingsService()
+_redis_url = _settings_service.get_runtime_value("redis_url")
 
 celery_app = Celery(
     "cloudbrief",
-    broker=settings.redis_url,
-    backend=settings.redis_url,
+    broker=_redis_url,
+    backend=_redis_url,
     include=["app.tasks.indexing", "app.tasks.graph_indexing"],
 )
 

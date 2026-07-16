@@ -9,6 +9,7 @@ from app.clients.model_client import ModelClient
 from app.config import get_settings
 from app.models.graph_schemas import KbGraphSchema
 from app.services.graph_extraction import GraphExtractionService
+from app.services.settings_service import SettingsService
 from app.stores.graph_schema_store import GraphSchemaStore
 from app.stores.graph_store import GraphStore
 from app.stores.index_metadata import IndexMetadataStore
@@ -19,7 +20,7 @@ logger = structlog.get_logger()
 
 
 def _get_redis_client():
-    return redis.from_url(get_settings().redis_url)
+    return redis.from_url(SettingsService().get_runtime_value("redis_url"))
 
 
 def _load_schema(kb_id: str) -> KbGraphSchema | None:
@@ -51,7 +52,7 @@ def rebuild_graph_task(self, kb_id: str):
         if not active:
             raise ValueError("NO_ACTIVE_INDEX")
 
-        milvus_store = MilvusStore(settings.milvus_uri, active.collection_name)
+        milvus_store = MilvusStore(SettingsService().get_runtime_value("milvus_uri"), active.collection_name)
 
         def _load_chunks():
             return [chunk for chunk, _ in milvus_store.get_all_chunks()]
@@ -179,7 +180,7 @@ def index_file_graph_task(self, kb_id: str, doc_id: str):
         if not active:
             raise ValueError("NO_ACTIVE_INDEX")
 
-        milvus_store = MilvusStore(settings.milvus_uri, active.collection_name)
+        milvus_store = MilvusStore(SettingsService().get_runtime_value("milvus_uri"), active.collection_name)
 
         def _load_doc_chunks():
             all_chunks = [chunk for chunk, _ in milvus_store.get_all_chunks()]

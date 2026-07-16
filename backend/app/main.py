@@ -9,7 +9,6 @@ from fastapi.responses import JSONResponse
 from app.api import auth, chat, eval, health, index, kb_access
 from app.api import metrics as metrics_api
 from app.api.admin import router as admin_router
-from app.config import get_settings
 from app.logging_config import RequestIdMiddleware, configure_logging
 from app.metrics import HTTP_REQUEST_DURATION, HTTP_REQUESTS_TOTAL
 from app.stores.db import init_db
@@ -20,9 +19,11 @@ logger = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = get_settings()
-    configure_logging(settings.log_level)
-    logger.info("app_starting", port=settings.backend_port)
+    from app.services.settings_service import SettingsService
+
+    settings_service = SettingsService()
+    configure_logging(settings_service.get_runtime_value("log_level"))
+    logger.info("app_starting", port=settings_service.get_runtime_value("backend_port"))
     init_db()
     logger.info("db_initialized")
 
@@ -100,5 +101,11 @@ async def generic_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     import uvicorn
 
-    settings = get_settings()
-    uvicorn.run("app.main:app", host="0.0.0.0", port=settings.backend_port, reload=True)
+    from app.services.settings_service import SettingsService
+
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=SettingsService().get_runtime_value("backend_port"),
+        reload=True,
+    )

@@ -6,6 +6,18 @@ from app.services.kb_service import KbService
 from app.stores.db import KbDirectory, KbFile
 
 
+def _make_settings_service(tmp_path, auto_index_on_upload: bool):
+    """构造字典式 get_runtime_value mock,覆盖 KbService 读取的全部运行期键。"""
+    svc = MagicMock()
+    values = {
+        "kb_storage_path": str(tmp_path),
+        "kb_max_file_size": 50 * 1024 * 1024,
+        "auto_index_on_upload": auto_index_on_upload,
+    }
+    svc.get_runtime_value.side_effect = lambda key: values.get(key)
+    return svc
+
+
 class _FakeUploadFile:
     def __init__(self, filename: str, content: bytes, content_type: str = "text/markdown"):
         self.filename = filename
@@ -37,11 +49,11 @@ def test_upload_file_triggers_index_when_auto_enabled(tmp_path, monkeypatch):
     index_service = MagicMock()
     index_service.trigger_file_index.return_value = "task-123"
 
-    settings_service = MagicMock()
-    settings_service.get_runtime_value.return_value = True
-
-    svc = KbService(store=store, index_service=index_service, settings_service=settings_service)
-    monkeypatch.setattr(svc, "storage_path", tmp_path)
+    svc = KbService(
+        store=store,
+        index_service=index_service,
+        settings_service=_make_settings_service(tmp_path, True),
+    )
 
     upload = _FakeUploadFile("hello.md", b"# Hello")
     result = svc.upload_file(directory_id=1, upload_file=upload)
@@ -58,11 +70,11 @@ def test_upload_file_does_not_trigger_index_when_disabled(tmp_path, monkeypatch)
     store.create_file.return_value = _make_kb_file(2, "uploaded")
 
     index_service = MagicMock()
-    settings_service = MagicMock()
-    settings_service.get_runtime_value.return_value = False
-
-    svc = KbService(store=store, index_service=index_service, settings_service=settings_service)
-    monkeypatch.setattr(svc, "storage_path", tmp_path)
+    svc = KbService(
+        store=store,
+        index_service=index_service,
+        settings_service=_make_settings_service(tmp_path, False),
+    )
 
     upload = _FakeUploadFile("hello.md", b"# Hello")
     result = svc.upload_file(directory_id=1, upload_file=upload)
@@ -114,11 +126,11 @@ def test_upload_file_keeps_file_when_index_trigger_fails(tmp_path, monkeypatch):
     index_service = MagicMock()
     index_service.trigger_file_index.side_effect = RuntimeError("broker down")
 
-    settings_service = MagicMock()
-    settings_service.get_runtime_value.return_value = True
-
-    svc = KbService(store=store, index_service=index_service, settings_service=settings_service)
-    monkeypatch.setattr(svc, "storage_path", tmp_path)
+    svc = KbService(
+        store=store,
+        index_service=index_service,
+        settings_service=_make_settings_service(tmp_path, True),
+    )
 
     upload = _FakeUploadFile("hello.md", b"# Hello")
     result = svc.upload_file(directory_id=1, upload_file=upload)
@@ -133,11 +145,11 @@ def _make_upload_service(tmp_path, monkeypatch) -> KbService:
     store.get_directory.return_value = KbDirectory(id=1, name="docs")
     store.create_file.return_value = _make_kb_file(7, "uploaded")
 
-    settings_service = MagicMock()
-    settings_service.get_runtime_value.return_value = False
-
-    svc = KbService(store=store, index_service=MagicMock(), settings_service=settings_service)
-    monkeypatch.setattr(svc, "storage_path", tmp_path)
+    svc = KbService(
+        store=store,
+        index_service=MagicMock(),
+        settings_service=_make_settings_service(tmp_path, False),
+    )
     return svc
 
 

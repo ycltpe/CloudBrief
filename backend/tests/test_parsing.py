@@ -350,11 +350,22 @@ def test_build_parser_wires_ocr_fn(tmp_path, monkeypatch):
     settings = get_settings()
     client = MagicMock()
 
-    monkeypatch.setattr(settings, "ocr_enabled", True)
-    parser = build_parser(settings, tmp_path, model_client=client)
+    def _fake_svc(ocr_enabled: bool):
+        svc = MagicMock()
+        values = {
+            "parser": "native",
+            "ocr_enabled": ocr_enabled,
+            "pdf_batch_page_threshold": 50,
+            "pdf_page_batch_size": 25,
+            "pdf_ocr_dpi": 200,
+            "pdf_max_pages": 2000,
+        }
+        svc.get_runtime_value.side_effect = lambda key: values.get(key)
+        return svc
+
+    parser = build_parser(settings, tmp_path, model_client=client, settings_service=_fake_svc(True))
     assert isinstance(parser, NativeParser)
     assert parser.ocr_fn == client.ocr_image
 
-    monkeypatch.setattr(settings, "ocr_enabled", False)
-    parser = build_parser(settings, tmp_path, model_client=client)
+    parser = build_parser(settings, tmp_path, model_client=client, settings_service=_fake_svc(False))
     assert parser.ocr_fn is None

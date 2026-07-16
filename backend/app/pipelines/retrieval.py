@@ -47,7 +47,7 @@ class RetrievalPipeline:
         import time
 
         start = time.perf_counter()
-        adapter = self.settings.retrieval_adapter
+        adapter = self.settings_service.get_runtime_value("retrieval_adapter")
 
         if adapter == "langchain":
             stage = LangChainRetrievalStage()
@@ -65,7 +65,7 @@ class RetrievalPipeline:
 
         runtime_embedding_model = self.settings_service.get_runtime_value("embedding_model")
 
-        milvus_store = MilvusStore(self.settings.milvus_uri, active.collection_name)
+        milvus_store = MilvusStore(self.settings_service.get_runtime_value("milvus_uri"), active.collection_name)
         bm25_store = BM25Store(active.bm25_index_path)
         bm25_store.load()
 

@@ -60,14 +60,14 @@ class LangChainRetrievalStage(AbstractStage[LCRetrievalInput, LCRetrievalOutput]
     def _vector_results(self, query: str, top_k: int, kb_id: str = "default") -> list[RetrievalResult]:
         active = self.index_metadata_store.get_active(kb_id)
         embeddings = OpenAIEmbeddings(
-            model=self.settings.embedding_model,
-            base_url=str(self.settings.model_base_url),
-            api_key=self.settings.dashscope_api_key.get_secret_value(),
+            model=self.settings_service.get_runtime_value("embedding_model"),
+            base_url=str(self.settings_service.get_runtime_value("embedding_base_url")),
+            api_key=self.settings_service.get_runtime_value("embedding_api_key"),
         )
         milvus_store = Milvus(
             embedding_function=embeddings,
             collection_name=active.collection_name,
-            connection_args={"uri": self.settings.milvus_uri},
+            connection_args={"uri": self.settings_service.get_runtime_value("milvus_uri")},
             auto_id=False,
             primary_field="chunk_id",
             text_field="content",

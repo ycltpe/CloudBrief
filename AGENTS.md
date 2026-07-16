@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## 项目概述
 
-CloudBrief 支持副驾 —— 面向企业内部的 Enterprise RAG 知识问答系统，求职作品集案例。采用 FastAPI + Next.js 14 全栈架构，检索链路为混合检索（BM25 + 向量）→ RRF(k=60) → Rerank → 带引用生成，并支持硬分支拒答与时效提示。
+CloudBrief 支持副驾 —— 面向企业内部的 Enterprise RAG 知识问答系统，作品集案例。采用 FastAPI + Next.js 14 全栈架构，检索链路为混合检索（BM25 + 向量）→ RRF(k=60) → Rerank → 带引用生成，并支持硬分支拒答与时效提示。
 
 ## 常用命令
 

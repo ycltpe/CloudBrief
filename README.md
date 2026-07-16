@@ -1,6 +1,6 @@
 # CloudBrief 支持副驾
 
-Enterprise RAG 内部知识问答系统，求职 AI 应用工程师作品集案例。
+Enterprise RAG 内部知识问答系统， AI 应用工程师作品集案例。
 
 ## 系统架构
 

@@ -9,3 +9,4 @@ frontend/.next
 frontend/node_modules
 backend/.venv
 .env
+__pycache__

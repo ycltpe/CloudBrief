@@ -416,7 +416,7 @@ _Source: backend/app/services/chat_service.py ; backend/app/pipelines/generation
 ### 8. 战略技术建议
 
 _决策框架:_ 编排框架的选择标准按权重排序——控制流可审计性（企业护栏要求）> 与现有接缝的集成成本 > API 稳定性 > 生态工具 > 学习曲线。LangGraph 在前三项全胜。
-_差异化定位:_ 本项目的 agentic 化不是"套框架"，而是三层演进的第三章（Native pipeline → LangChain adapter → Agentic StateGraph），且保留双路径可对比——这在求职叙事中把"会用框架"升级为"会做架构决策并能量化验证"。
+_差异化定位:_ 本项目的 agentic 化不是"套框架"，而是三层演进的第三章（Native pipeline → LangChain adapter → Agentic StateGraph），且保留双路径可对比——这在叙事中把"会用框架"升级为"会做架构决策并能量化验证"。
 _战略投入:_ 优先投入 `tool_trace` 可观测与 eval 集多跳扩充——前者是 agentic 功能上线的前置条件，后者是价值可度量的前提；两者都是一次性投入长期收益。
 
 ### 9. 实施路线图与风险评估

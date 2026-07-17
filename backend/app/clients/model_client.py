@@ -1,6 +1,7 @@
 import base64
 import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -16,6 +17,34 @@ from app.config import Settings
 from app.services.settings_service import SettingsService
 
 logger = structlog.get_logger()
+
+
+@dataclass
+class ToolCall:
+    """单次工具调用声明（OpenAI 兼容格式）。"""
+
+    id: str
+    type: str
+    function: dict[str, Any]
+
+    @property
+    def name(self) -> str:
+        return self.function.get("name", "")
+
+    @property
+    def arguments(self) -> str:
+        return self.function.get("arguments", "")
+
+
+@dataclass
+class ChatCompletion:
+    """LLM 非流式响应，支持文本与工具调用并存。"""
+
+    content: str | None
+    tool_calls: list[ToolCall] | None
+    model: str | None = None
+    usage: dict[str, Any] | None = None
+    raw: dict[str, Any] | None = None
 
 _RETRY_CONDITION = retry_if_exception_type(
     (httpx.NetworkError, httpx.TimeoutException, httpx.ConnectError)
@@ -280,7 +309,9 @@ class ModelClient:
         temperature: float = 0.3,
         max_tokens: int | None = None,
         timeout: float | None = None,
-    ) -> str | AsyncIterator[str]:
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+    ) -> str | AsyncIterator[str] | ChatCompletion:
         self._ensure_clients()
         start = time.perf_counter()
         request_timeout = timeout if timeout is not None else self._settings_service.get_runtime_value("request_timeout")
@@ -308,6 +339,16 @@ class ModelClient:
         if max_tokens is not None:
             payload_summary["max_tokens"] = max_tokens
 
+        if tools is not None:
+            if stream:
+                raise ValueError("tools are not supported with stream=True")
+            payload["tools"] = tools
+            if tool_choice is not None:
+                payload["tool_choice"] = tool_choice
+            payload_summary["tool_count"] = len(tools)
+            if tool_choice is not None:
+                payload_summary["tool_choice"] = tool_choice
+
         try:
             result = await self._chat_with_payload(
                 self.llm_primary,
@@ -322,6 +363,8 @@ class ModelClient:
                 model=primary_model,
                 payload_summary=payload_summary,
             )
+            if tools is not None:
+                return self._parse_chat_completion(result)
             return result
         except Exception as exc:
             self._log_call(
@@ -352,6 +395,8 @@ class ModelClient:
                 model=secondary_model,
                 payload_summary=payload_summary,
             )
+            if tools is not None:
+                return self._parse_chat_completion(result)
             return result
         except Exception as exc:
             self._log_call(
@@ -371,7 +416,7 @@ class ModelClient:
         payload: dict[str, Any],
         stream: bool,
         timeout: float,
-    ) -> str | AsyncIterator[str]:
+    ) -> str | AsyncIterator[str] | dict[str, Any]:
         if not stream:
             response = await client._async_client.post(
                 "/chat/completions",
@@ -380,6 +425,8 @@ class ModelClient:
             )
             response.raise_for_status()
             data = response.json()
+            if payload.get("tools"):
+                return data
             return data["choices"][0]["message"]["content"]
 
         async def _stream() -> AsyncIterator[str]:
@@ -425,6 +472,29 @@ class ModelClient:
             )
 
         return _stream()
+
+    def _parse_chat_completion(self, data: dict[str, Any]) -> ChatCompletion:
+        choice = data.get("choices", [{}])[0]
+        message = choice.get("message", {})
+        content = message.get("content")
+        raw_tool_calls = message.get("tool_calls")
+        tool_calls = None
+        if raw_tool_calls:
+            tool_calls = [
+                ToolCall(
+                    id=tc.get("id", ""),
+                    type=tc.get("type", "function"),
+                    function=tc.get("function", {}) or {},
+                )
+                for tc in raw_tool_calls
+            ]
+        return ChatCompletion(
+            content=content,
+            tool_calls=tool_calls,
+            model=data.get("model"),
+            usage=data.get("usage"),
+            raw=data,
+        )
 
     @retry(stop=_RETRY_STOP, wait=_RETRY_WAIT, retry=_RETRY_CONDITION)
     def _ocr_with_client(

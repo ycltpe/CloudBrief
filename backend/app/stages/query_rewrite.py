@@ -8,6 +8,8 @@ from app.stages.base import AbstractStage
 class QueryRewriteInput(BaseModel):
     current_question: str
     history: list[dict]
+    previous_query: str | None = None
+    hop_count: int = 0
 
 
 class QueryRewriteOutput(BaseModel):
@@ -23,6 +25,12 @@ class QueryRewriteStage(AbstractStage[QueryRewriteInput, QueryRewriteOutput]):
 
     def execute(self, input_data: QueryRewriteInput) -> QueryRewriteOutput:
         current = input_data.current_question.strip()
+
+        # 重试改写：之前一轮检索质量低时，退回到更短的问题或换一种表述再试
+        if input_data.hop_count > 0 and input_data.previous_query:
+            if input_data.previous_query != current:
+                return QueryRewriteOutput(rewritten_query=current)
+            return QueryRewriteOutput(rewritten_query=f"{current}（请换种表述）")
 
         if not input_data.history:
             return QueryRewriteOutput(rewritten_query=current)

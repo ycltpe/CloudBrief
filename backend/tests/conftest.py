@@ -27,6 +27,10 @@ def _isolate_runtime_settings():
         for env_name in (name, name.upper()):
             if env_name in os.environ:
                 scrubbed[env_name] = os.environ.pop(env_name)
+    # 图测试会触发 langgraph 运行，剥掉 LangSmith 追踪环境变量，避免用例联网上报
+    for env_name in list(os.environ):
+        if env_name.startswith(("LANGCHAIN_", "LANGSMITH_")):
+            scrubbed[env_name] = os.environ.pop(env_name)
     yield
     os.environ.update(scrubbed)
     SettingsService.invalidate_cache()

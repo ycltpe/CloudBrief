@@ -1,8 +1,9 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
+import pytest
 
-from app.clients.model_client import ModelClient
+from app.clients.model_client import ChatCompletion, ModelClient
 from app.config import get_settings
 
 
@@ -187,3 +188,117 @@ def test_embed_falls_back_to_secondary_in_dashscope_mode(monkeypatch):
     assert result == [[0.3, 0.4]]
     assert ok_sync.post.call_args.kwargs["json"]["model"] == "BAAI/bge-m3"
     client.close()
+
+
+async def test_chat_with_tools_serializes_tools_and_parses_tool_calls(monkeypatch):
+    client, _ = _make_client(monkeypatch)
+    fake_response = MagicMock()
+    fake_response.json.return_value = {
+        "model": "qwen-plus",
+        "choices": [
+            {
+                "message": {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "search", "arguments": '{"query": "部署"}'},
+                        }
+                    ],
+                }
+            }
+        ],
+    }
+    fake_async = MagicMock()
+    fake_async.post = AsyncMock(return_value=fake_response)
+    fake_async.aclose = AsyncMock()
+    monkeypatch.setattr(client.llm_primary, "_async_client", fake_async)
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search",
+                "description": "检索知识库",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    result = await client.chat(
+        [{"role": "user", "content": "hi"}],
+        tools=tools,
+        tool_choice="auto",
+    )
+
+    assert isinstance(result, ChatCompletion)
+    assert result.content == ""
+    assert result.tool_calls is not None
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].name == "search"
+    assert result.tool_calls[0].arguments == '{"query": "部署"}'
+    assert result.model == "qwen-plus"
+    payload = fake_async.post.call_args.kwargs["json"]
+    assert payload["tools"] == tools
+    assert payload["tool_choice"] == "auto"
+    assert payload["stream"] is False
+    await client.aclose()
+
+
+async def test_chat_with_tools_uses_secondary_on_primary_failure(monkeypatch):
+    client, _ = _make_client(
+        monkeypatch, local_llm_url="http://127.0.0.1:8000/v1"
+    )
+    bad_response = MagicMock()
+    bad_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "boom", request=MagicMock(), response=MagicMock(text="bad")
+    )
+    failing_async = MagicMock()
+    failing_async.post = AsyncMock(return_value=bad_response)
+    failing_async.aclose = AsyncMock()
+    monkeypatch.setattr(client.llm_primary, "_async_client", failing_async)
+
+    ok_response = MagicMock()
+    ok_response.json.return_value = {
+        "model": "Qwen/local-llm",
+        "choices": [
+            {
+                "message": {
+                    "content": "ok",
+                    "tool_calls": [
+                        {
+                            "id": "call_2",
+                            "type": "function",
+                            "function": {"name": "search", "arguments": "{}"},
+                        }
+                    ],
+                }
+            }
+        ],
+    }
+    ok_async = MagicMock()
+    ok_async.post = AsyncMock(return_value=ok_response)
+    ok_async.aclose = AsyncMock()
+    monkeypatch.setattr(client.llm_secondary, "_async_client", ok_async)
+
+    tools = [{"type": "function", "function": {"name": "search"}}]
+    result = await client.chat(
+        [{"role": "user", "content": "hi"}],
+        tools=tools,
+    )
+
+    assert isinstance(result, ChatCompletion)
+    assert result.tool_calls[0].name == "search"
+    assert ok_async.post.call_args.kwargs["json"]["tools"] == tools
+    await client.aclose()
+
+
+async def test_chat_with_tools_and_stream_raises(monkeypatch):
+    client, _ = _make_client(monkeypatch)
+    with pytest.raises(ValueError):
+        await client.chat(
+            [{"role": "user", "content": "hi"}],
+            stream=True,
+            tools=[{"type": "function", "function": {"name": "search"}}],
+        )
+    await client.aclose()

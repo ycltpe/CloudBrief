@@ -48,6 +48,7 @@ class RetrievalPipeline:
 
         start = time.perf_counter()
         adapter = self.settings_service.get_runtime_value("retrieval_adapter")
+        orchestration_mode = self.settings_service.get_runtime_value("orchestration_mode")
 
         if adapter == "langchain":
             stage = LangChainRetrievalStage()
@@ -103,10 +104,10 @@ class RetrievalPipeline:
         )
         latency_ms = int((time.perf_counter() - start) * 1000)
 
-        RETRIEVAL_LATENCY.labels(adapter=adapter, kb_id=kb_id, fallback=str(is_fallback)).observe(latency_ms)
-        RECALL_COUNT.labels(adapter=adapter, kb_id=kb_id, fallback=str(is_fallback)).observe(len(reranked.reranked_results))
+        RETRIEVAL_LATENCY.labels(adapter=adapter, kb_id=kb_id, fallback=str(is_fallback), orchestration_mode=orchestration_mode).observe(latency_ms)
+        RECALL_COUNT.labels(adapter=adapter, kb_id=kb_id, fallback=str(is_fallback), orchestration_mode=orchestration_mode).observe(len(reranked.reranked_results))
         if reranked.reranked_results:
-            RERANK_MAX_SCORE.labels(adapter=adapter, kb_id=kb_id, fallback=str(is_fallback)).set(
+            RERANK_MAX_SCORE.labels(adapter=adapter, kb_id=kb_id, fallback=str(is_fallback), orchestration_mode=orchestration_mode).set(
                 max(r.score for r in reranked.reranked_results)
             )
 

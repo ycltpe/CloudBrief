@@ -107,6 +107,12 @@ class Settings(BaseSettings):
     retrieval_adapter: Literal["native", "langchain"] = "native"
     parser: Literal["native", "llamaindex"] = "native"
 
+    # 编排模式
+    orchestration_mode: Literal["native", "langchain", "agentic"] = "native"
+
+    # LangGraph 编排状态持久化（SQLite）路径
+    checkpoint_sqlite_path: Path = Path("./data/checkpoints.sqlite")
+
     @property
     def mysql_database(self) -> str:
         """从 mysql_url 中解析出数据库名，用于 Milvus collection 命名等场景。"""

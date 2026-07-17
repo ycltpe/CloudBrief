@@ -2,6 +2,7 @@ import hashlib
 import json
 import re
 from datetime import datetime
+from typing import Any
 
 from app.stores.db import QueryLog, get_session_factory
 
@@ -31,6 +32,24 @@ class QueryLogStore:
         text = re.sub(r"\b[A-Z]{2,4}\d{5,10}\b", "[EMPLOYEE_ID]", text)
         return text
 
+    @staticmethod
+    def _desensitize_value(value: Any) -> Any:
+        """递归脱敏字符串，嵌套字典/列表保持结构。"""
+        if isinstance(value, str):
+            return QueryLogStore._desensitize(value)
+        if isinstance(value, list):
+            return [QueryLogStore._desensitize_value(v) for v in value]
+        if isinstance(value, dict):
+            return {k: QueryLogStore._desensitize_value(v) for k, v in value.items()}
+        return value
+
+    @staticmethod
+    def _desensitize_trace(trace: list[dict] | None) -> list[dict]:
+        """tool_trace 字符串字段统一脱敏，与现有日志口径一致。"""
+        if not trace:
+            return []
+        return [QueryLogStore._desensitize_value(entry) for entry in trace]
+
     def insert(
         self,
         *,
@@ -55,10 +74,12 @@ class QueryLogStore:
         latency_ms_retrieve: int | None,
         latency_ms_generate: int | None,
         latency_ms_total: int | None,
+        tool_trace: list | None = None,
     ) -> QueryLog:
         original_question = self._desensitize(original_question)
         rewritten_question = self._desensitize(rewritten_question) if rewritten_question else None
         answer = self._desensitize(answer) if answer else None
+        tool_trace = self._desensitize_trace(tool_trace)
 
         log_hash = self._hash(
             f"{user_id}:{original_question}:{received_at.isoformat()}"
@@ -93,6 +114,7 @@ class QueryLogStore:
                 latency_ms_retrieve=latency_ms_retrieve,
                 latency_ms_generate=latency_ms_generate,
                 latency_ms_total=latency_ms_total,
+                tool_trace=tool_trace,
             )
             session.add(log)
             session.commit()

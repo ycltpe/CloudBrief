@@ -97,6 +97,11 @@ _register(SettingMeta(
     type="choice", default="native", options=["native", "langchain"],
 ))
 _register(SettingMeta(
+    key="orchestration_mode", label="编排模式", group="适配器",
+    description="问答链路的编排实现；agentic 为 LangGraph 图编排，切换后新会话即时生效",
+    type="choice", default="native", options=["native", "langchain", "agentic"],
+))
+_register(SettingMeta(
     key="parser", label="文档解析器", group="适配器",
     description="文档解析阶段使用的实现适配器，重建索引后生效",
     type="choice", default="native", options=["native", "llamaindex"],
@@ -314,6 +319,12 @@ _register(SettingMeta(
     key="bm25_index_path", label="BM25 索引路径", group="存储连接",
     description="BM25 索引文件的存放路径（新索引写到其同级目录）",
     type="str", default="./data/bm25_index.pkl",
+))
+_register(SettingMeta(
+    key="checkpoint_sqlite_path", label="LangGraph 编排状态 SQLite 路径", group="存储连接",
+    description="agentic 模式下 LangGraph 编排状态持久化的 SQLite 文件路径",
+    type="str", default="./data/checkpoints.sqlite",
+    restart_required=True,
 ))
 _register(SettingMeta(
     key="kb_storage_path", label="知识库文件存储路径", group="存储连接",

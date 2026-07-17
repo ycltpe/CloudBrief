@@ -39,6 +39,7 @@ class GenerationPipelineOutput(BaseModel):
     is_refusal: bool = False
     is_stale: bool = False
     diagnostics: dict = {}
+    tokens_used: dict[str, int] | None = None
 
 
 class RefusalResponse(BaseModel):
@@ -110,16 +111,18 @@ class GenerationPipeline:
 
         # 硬分支拒答：rerank fallback 时跳过阈值检查，因为此时分数来自 RRF 与 rerank 不同尺度
         threshold = self.settings_service.get_runtime_value("refusal_threshold")
+        orchestration_mode = self.settings_service.get_runtime_value("orchestration_mode")
         should_refuse = (
             len(input_data.chunks) == 0
             or (not input_data.is_fallback and input_data.max_score < threshold)
         )
         if should_refuse:
-            REFUSAL_RATE.labels(reason="no_recall", kb_id=input_data.kb_id or "default").inc()
+            REFUSAL_RATE.labels(reason="no_recall", kb_id=input_data.kb_id or "default", orchestration_mode=orchestration_mode).inc()
             return GenerationPipelineOutput(
                 answer=RefusalResponse().answer,
                 is_refusal=True,
                 diagnostics=diagnostics,
+                tokens_used={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
             )
 
         graph_context = input_data.graph_context
@@ -147,6 +150,7 @@ class GenerationPipeline:
                 answer="抱歉，当前响应生成超时，请稍后重试。",
                 is_refusal=False,
                 diagnostics=diagnostics,
+                tokens_used={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
             )
         except Exception as exc:
             logger.error(
@@ -160,12 +164,14 @@ class GenerationPipeline:
                 answer="抱歉，当前生成服务暂不可用，请稍后重试。",
                 is_refusal=False,
                 diagnostics=diagnostics,
+                tokens_used={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
             )
         finally:
             latency_ms = int((time.perf_counter() - start) * 1000)
             GENERATION_LATENCY.labels(
                 provider=self.settings_service.get_runtime_value("llm_provider"),
                 model=self.settings_service.get_runtime_value("llm_model"),
+                orchestration_mode=orchestration_mode,
             ).observe(latency_ms)
 
         parsed = self.citation_parser.execute(
@@ -180,6 +186,7 @@ class GenerationPipeline:
             is_refusal=False,
             is_stale=is_stale,
             diagnostics=diagnostics,
+            tokens_used=llm_output.tokens_used,
         )
 
     async def generate_stream(self, input_data: GenerationPipelineInput) -> AsyncIterator[StreamEvent]:
@@ -201,12 +208,13 @@ class GenerationPipeline:
 
         # 硬分支拒答：rerank fallback 时跳过阈值检查，因为此时分数来自 RRF 与 rerank 不同尺度
         threshold = self.settings_service.get_runtime_value("refusal_threshold")
+        orchestration_mode = self.settings_service.get_runtime_value("orchestration_mode")
         should_refuse = (
             len(input_data.chunks) == 0
             or (not input_data.is_fallback and input_data.max_score < threshold)
         )
         if should_refuse:
-            REFUSAL_RATE.labels(reason="no_recall", kb_id=input_data.kb_id or "default").inc()
+            REFUSAL_RATE.labels(reason="no_recall", kb_id=input_data.kb_id or "default", orchestration_mode=orchestration_mode).inc()
             logger.info(
                 "generation_stream_refuse",
                 threshold=threshold,
@@ -222,6 +230,7 @@ class GenerationPipeline:
                     "is_refusal": True,
                     "is_stale": False,
                     "diagnostics": diagnostics,
+                    "tokens_used": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
                 },
             )
             yield StreamEvent(type="done", data={})
@@ -287,7 +296,7 @@ class GenerationPipeline:
             )
             yield StreamEvent(
                 type="citations",
-                data={"citations": [], "is_refusal": False, "is_stale": False, "diagnostics": diagnostics},
+                data={"citations": [], "is_refusal": False, "is_stale": False, "diagnostics": diagnostics, "tokens_used": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}},
             )
             yield StreamEvent(type="done", data={})
             return
@@ -305,7 +314,7 @@ class GenerationPipeline:
             )
             yield StreamEvent(
                 type="citations",
-                data={"citations": [], "is_refusal": False, "is_stale": False, "diagnostics": diagnostics},
+                data={"citations": [], "is_refusal": False, "is_stale": False, "diagnostics": diagnostics, "tokens_used": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}},
             )
             yield StreamEvent(type="done", data={})
             return
@@ -314,6 +323,7 @@ class GenerationPipeline:
             GENERATION_LATENCY.labels(
                 provider=self.settings_service.get_runtime_value("llm_provider"),
                 model=self.settings_service.get_runtime_value("llm_model"),
+                orchestration_mode=orchestration_mode,
             ).observe(latency_ms)
 
         start_parse = time.perf_counter()
@@ -329,6 +339,13 @@ class GenerationPipeline:
             latency_ms=int((time.perf_counter() - start_parse) * 1000),
         )
 
+        gen_input = GenerationInput(
+            question=input_data.question,
+            chunks=input_data.chunks,
+            history=input_data.history,
+            graph_context=graph_context,
+        )
+        tokens_used = self.llm_stage.count_tokens_for(gen_input, raw_answer)
         yield StreamEvent(
             type="citations",
             data={
@@ -336,6 +353,7 @@ class GenerationPipeline:
                 "is_refusal": False,
                 "is_stale": is_stale,
                 "diagnostics": diagnostics,
+                "tokens_used": tokens_used,
             },
         )
         yield StreamEvent(type="done", data={})

@@ -17,6 +17,7 @@ from app.models.schemas import (
     ConversationSummary,
     UserOut,
 )
+from app.orchestration import AgentGraphRunner, AgenticGraphDeps
 from app.pipelines.generation import (
     GenerationPipeline,
     GenerationPipelineInput,
@@ -24,7 +25,10 @@ from app.pipelines.generation import (
 )
 from app.pipelines.retrieval import RetrievalPipeline
 from app.services.settings_service import SettingsService
+from app.stages.grade import GradeStage
 from app.stages.graph_rag_context_stage import GraphRAGContextStage
+from app.stages.multi_hop_decompose import MultiHopDecomposeStage
+from app.stages.plan import PlanStage
 from app.stages.query_rewrite import QueryRewriteInput, QueryRewriteStage
 from app.stores.conversation import ConversationStore
 from app.stores.graph_schema_store import GraphSchemaStore
@@ -45,9 +49,15 @@ class ChatService:
         self.model_client = ModelClient(self.settings)
         self.retrieval_pipeline = RetrievalPipeline(self.model_client)
         self.generation_pipeline = GenerationPipeline(self.model_client, graph_store=graph_store)
-        self.query_rewrite_stage = QueryRewriteStage()
         self.graph_store = graph_store
         self.graph_schema_store = GraphSchemaStore()
+        self.query_rewrite_stage = QueryRewriteStage()
+        self.grade_stage = GradeStage(self.model_client)
+        self.plan_stage = PlanStage(self.model_client, self.graph_schema_store)
+        self.multi_hop_decompose_stage = MultiHopDecomposeStage(self.model_client)
+        self.graph_shadow_store = GraphShadowStore()
+        self.plan_stage = PlanStage(self.model_client, self.graph_schema_store)
+        self.multi_hop_decompose_stage = MultiHopDecomposeStage(self.model_client)
         self.graph_shadow_store = GraphShadowStore()
         self.kb_access_store = KbAccessStore()
         self.settings_service = SettingsService()
@@ -292,6 +302,24 @@ class ChatService:
         )
 
     async def ask_stream(
+        self,
+        request: ChatRequest,
+        current_user: UserOut | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """按 orchestration_mode 分发编排路径。
+
+        agentic 走 StateGraph 编排；native / langchain 走既有线性流程
+        （langchain 档的检索差异由 retrieval_adapter 在管线内细分）。
+        """
+        mode = self.settings_service.get_runtime_value("orchestration_mode")
+        if mode == "agentic":
+            async for event in self._ask_stream_agentic(request, current_user=current_user):
+                yield event
+            return
+        async for event in self._ask_stream_native(request, current_user=current_user):
+            yield event
+
+    async def _ask_stream_native(
         self,
         request: ChatRequest,
         current_user: UserOut | None = None,
@@ -734,12 +762,14 @@ class ChatService:
         latency_ms_retrieve: int | None,
         latency_ms_generate: int | None,
         latency_ms_total: int | None,
+        tool_trace: list | None = None,
     ) -> None:
         """在后台线程中写入 query_logs，不阻塞主响应。"""
         try:
             config_snapshot = {
                 "embedding_model": self.settings_service.get_runtime_value("embedding_model"),
                 "llm_model": self.settings_service.get_runtime_value("llm_model"),
+                "orchestration_mode": self.settings_service.get_runtime_value("orchestration_mode"),
                 "reranker_provider": self.settings_service.get_runtime_value("reranker_provider"),
                 "refusal_threshold": self.settings_service.get_runtime_value("refusal_threshold"),
                 "stale_threshold_days": self.settings_service.get_runtime_value("stale_threshold_days"),
@@ -766,6 +796,170 @@ class ChatService:
                 latency_ms_retrieve=latency_ms_retrieve,
                 latency_ms_generate=latency_ms_generate,
                 latency_ms_total=latency_ms_total,
+                tool_trace=tool_trace,
             )
         except Exception as exc:
             logger.warning("query_log_insert_failed", user_id=user_id, error=str(exc))
+
+    async def _ask_stream_agentic(
+        self,
+        request: ChatRequest,
+        current_user: UserOut | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """agentic 编排路径：StateGraph 执行与 native 等价的问答流程。
+
+        会话创建、历史读取、JWT/kb 权限校验在图入口之前完成；
+        SSE 六事件协议与事件负载结构与 native 完全一致，前端零改动。
+        """
+        user_id = current_user.id if current_user else None
+        received_at = datetime.utcnow()
+        start_total = time.perf_counter()
+        conversation_id = None
+        kb_id = "default"
+
+        try:
+            yield StreamEvent(
+                type="status",
+                data={"step": "received", "message": "已收到，我先查一下知识库…"},
+            )
+            logger.info(
+                "chat_stream_step_start",
+                step="received",
+                conversation_id=conversation_id,
+                orchestration_mode="agentic",
+            )
+
+            conversation_id = request.conversation_id or await asyncio.to_thread(
+                self.conversation_store.create,
+                user_id=user_id,
+            )
+            history = await asyncio.to_thread(self.get_history, conversation_id)
+            kb_id = await self._resolve_kb_id(request, current_user)
+            logger.info(
+                "agentic_stream_entry",
+                conversation_id=conversation_id,
+                kb_id=kb_id,
+                message_count=len(history),
+           )
+
+            deps = AgenticGraphDeps(
+                retrieval_pipeline=self.retrieval_pipeline,
+                generation_pipeline=self.generation_pipeline,
+                query_rewrite_stage=self.query_rewrite_stage,
+                grade_stage=self.grade_stage,
+                plan_stage=self.plan_stage,
+                multi_hop_decompose_stage=self.multi_hop_decompose_stage,
+            )
+            runner = AgentGraphRunner(deps)
+            async for event in runner.stream(
+                {
+                    "question": request.question,
+                    "conversation_id": conversation_id,
+                    "history": history,
+                    "kb_id": kb_id,
+                },
+                thread_id=conversation_id,
+            ):
+                yield event
+
+            final = runner.final_state
+            citations = final.get("citations", [])
+            is_refusal = final.get("is_refusal", False)
+            is_stale = final.get("is_stale", False)
+            full_answer = final.get("answer", "")
+            retrieval_results = final.get("retrieval_results", [])
+            is_fallback = final.get("is_fallback", False)
+            query = final.get("rewritten_query", request.question)
+            tool_trace = final.get("tool_trace", [])
+
+            yield StreamEvent(
+                type="citations",
+                data={
+                    "conversation_id": conversation_id,
+                    "citations": citations,
+                    "is_refusal": is_refusal,
+                    "is_stale": is_stale,
+                },
+            )
+            yield StreamEvent(
+                type="done",
+                data={"conversation_id": conversation_id},
+            )
+            latency_ms_total = int((time.perf_counter() - start_total) * 1000)
+
+            asyncio.create_task(
+                asyncio.to_thread(
+                    self._persist_chat,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    question=request.question,
+                    full_answer=full_answer,
+                    citations=citations,
+                    is_refusal=is_refusal,
+                    is_stale=is_stale,
+                )
+            )
+
+            graphrag_enabled = bool(kb_id and await self._is_shadow_mode_enabled(kb_id))
+            graphrag_used = False
+            if kb_id and await self._is_shadow_mode_enabled(kb_id):
+                asyncio.create_task(
+                    self._record_shadow_async(
+                        kb_id=kb_id,
+                        user_id=user_id,
+                        question=request.question,
+                        retrieval_results=retrieval_results,
+                        is_fallback=is_fallback,
+                        history=history,
+                        vector_answer=full_answer,
+                    )
+                )
+                graphrag_used = graphrag_enabled
+
+            asyncio.create_task(
+                asyncio.to_thread(
+                    self._log_query,
+                    user_id=user_id,
+                    received_at=received_at,
+                    original_question=request.question,
+                    rewritten_question=query,
+                    kb_id=kb_id,
+                    retrieval_adapter=self.settings_service.get_runtime_value("retrieval_adapter"),
+                    is_fallback=is_fallback,
+                    max_score=final.get("max_score") if retrieval_results else None,
+                    retrieval_results=retrieval_results,
+                    answer=full_answer,
+                    citations=citations,
+                    is_refusal=is_refusal,
+                    is_stale=is_stale,
+                    graphrag_enabled=graphrag_enabled,
+                    graphrag_used=graphrag_used,
+                    latency_ms_rewrite=self._trace_latency(tool_trace, "rewrite"),
+                    latency_ms_retrieve=self._trace_latency(tool_trace, "retrieve"),
+                    latency_ms_generate=self._trace_latency(tool_trace, "generate"),
+                    latency_ms_total=latency_ms_total,
+                    tool_trace=tool_trace,
+                )
+            )
+        except Exception as exc:
+            logger.error(
+                "chat_stream_failed",
+                conversation_id=conversation_id,
+                user_id=user_id,
+                error=str(exc),
+                orchestration_mode="agentic",
+            )
+            yield StreamEvent(
+                type="error",
+                data={
+                    "conversation_id": conversation_id,
+                    "message": str(exc),
+                },
+            )
+
+    @staticmethod
+    def _trace_latency(tool_trace: list[dict], node: str) -> int | None:
+        for entry in tool_trace or []:
+            if entry.get("node") == node:
+                return entry.get("latency_ms")
+        return None

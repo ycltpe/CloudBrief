@@ -7,6 +7,7 @@ from app.config import get_settings
 from app.models.graph_schemas import SubgraphContext
 from app.services.settings_service import SettingsService
 from app.stages.base import AbstractStage, RetrievalResult
+from app.utils.token_usage import count_messages_tokens, count_tokens
 
 
 class GenerationInput(BaseModel):
@@ -18,6 +19,7 @@ class GenerationInput(BaseModel):
 
 class GenerationOutput(BaseModel):
     raw_answer: str
+    tokens_used: dict[str, int] | None = None
 
 
 class GenerationLLMStage(AbstractStage[GenerationInput, GenerationOutput]):
@@ -35,7 +37,16 @@ class GenerationLLMStage(AbstractStage[GenerationInput, GenerationOutput]):
     async def execute(self, input_data: GenerationInput) -> GenerationOutput:
         messages = self._build_messages(input_data)
         answer = await self.model_client.chat(messages, stream=False)
-        return GenerationOutput(raw_answer=answer)
+        prompt_tokens = count_messages_tokens(messages)
+        completion_tokens = count_tokens(answer)
+        return GenerationOutput(
+            raw_answer=answer,
+            tokens_used={
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            },
+        )
 
     async def execute_stream(self, input_data: GenerationInput) -> AsyncIterator[str]:
         """流式生成：按上游模型返回的自然节奏逐段返回。"""
@@ -43,6 +54,17 @@ class GenerationLLMStage(AbstractStage[GenerationInput, GenerationOutput]):
         stream = await self.model_client.chat(messages, stream=True)
         async for chunk in stream:
             yield chunk
+
+    def count_tokens_for(self, input_data: GenerationInput, answer: str) -> dict[str, int]:
+        """基于已构建的 prompt 和最终答案统计 token 使用量。"""
+        messages = self._build_messages(input_data)
+        prompt_tokens = count_messages_tokens(messages)
+        completion_tokens = count_tokens(answer)
+        return {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        }
 
     def _build_messages(self, input_data: GenerationInput) -> list[dict]:
         evidence_text = "\n\n".join(

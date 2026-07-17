@@ -4,32 +4,32 @@ from prometheus_client import Counter, Gauge, Histogram, generate_latest
 RETRIEVAL_LATENCY = Histogram(
     "rag_retrieval_latency_ms",
     "端到端检索耗时",
-    ["adapter", "kb_id", "fallback"],
+    ["adapter", "kb_id", "fallback", "orchestration_mode"],
     buckets=[10, 50, 100, 200, 500, 1000, 2000, 5000, 10000],
 )
 RECALL_COUNT = Histogram(
     "rag_recall_count",
     "检索返回 chunk 数量",
-    ["adapter", "kb_id", "fallback"],
+    ["adapter", "kb_id", "fallback", "orchestration_mode"],
     buckets=[1, 2, 5, 10, 20, 50, 100],
 )
 RERANK_MAX_SCORE = Gauge(
     "rag_rerank_max_score",
     "最终进入生成的最高分",
-    ["adapter", "kb_id", "fallback"],
+    ["adapter", "kb_id", "fallback", "orchestration_mode"],
 )
 
 # 生成
 GENERATION_LATENCY = Histogram(
     "rag_generation_latency_ms",
     "生成耗时",
-    ["provider", "model"],
+    ["provider", "model", "orchestration_mode"],
     buckets=[100, 500, 1000, 2000, 5000, 10000, 20000, 30000],
 )
 REFUSAL_RATE = Counter(
     "rag_refusal_total",
     "硬分支拒答次数",
-    ["reason", "kb_id"],
+    ["reason", "kb_id", "orchestration_mode"],
 )
 
 # 错误

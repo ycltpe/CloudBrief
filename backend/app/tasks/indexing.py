@@ -279,6 +279,7 @@ def rebuild_index_task(self, kb_id: str = "default"):
                         bm25_index_path=str(bm25_path),
                         kb_id=kb_id,
                         reason="rebuild",
+                        index_type=getattr(milvus_store, "index_type", "IVF_FLAT"),
                     )
 
                 _run_step(
@@ -472,6 +473,7 @@ def index_file_task(self, file_id: int):
                         kb_id=kb_id,
                         reason="file_add",
                         source_changes_json=json.dumps(sorted(new_source_ids)),
+                        index_type=getattr(milvus_store, "index_type", "IVF_FLAT"),
                     )
 
                 _run_step(

@@ -38,6 +38,7 @@ class AgentState(TypedDict):
     retrieval_results: list[RetrievalResult]
     is_fallback: bool
     max_score: float
+    retrieval_metadata: dict | None
 
     # ---- 评分 ----
     grade_passed: bool

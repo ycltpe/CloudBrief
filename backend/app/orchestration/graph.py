@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import time
 from typing import Literal
 
@@ -78,6 +79,17 @@ class AgentGraphNodes:
 
     def _current_max_score(self, results: list[RetrievalResult]) -> float:
         return max((r.score for r in results), default=0.0)
+
+    @staticmethod
+    def _metadata_to_dict(metadata) -> dict | None:
+        """安全地将 RetrievalCascadeMetadata 或 dict 转为字典；Mock 对象返回 None。"""
+        if metadata is None:
+            return None
+        if dataclasses.is_dataclass(metadata) and not isinstance(metadata, type):
+            return dataclasses.asdict(metadata)
+        if isinstance(metadata, dict):
+            return metadata
+        return None
 
     # ------------------------------------------------------------------
     # 节点
@@ -151,6 +163,7 @@ class AgentGraphNodes:
             "retrieval_results": output.results,
             "is_fallback": output.is_fallback,
             "max_score": self._current_max_score(output.results),
+            "retrieval_metadata": self._metadata_to_dict(output.retrieval_metadata),
             "tool_trace": self._trace(
                 state.get("tool_trace"),
                 node="retrieve",
@@ -235,9 +248,19 @@ class AgentGraphNodes:
         outputs = await asyncio.gather(*(_retrieve_one(q) for q in sub_questions))
         all_results: list[RetrievalResult] = []
         any_fallback = False
+        aggregated_metadata: dict | None = None
         for output in outputs:
             all_results.extend(output.results)
             any_fallback = any_fallback or output.is_fallback
+            meta_dict = self._metadata_to_dict(output.retrieval_metadata)
+            if meta_dict:
+                if aggregated_metadata is None:
+                    aggregated_metadata = meta_dict
+                else:
+                    aggregated_metadata["vector_hits"] += meta_dict.get("vector_hits", 0)
+                    aggregated_metadata["bm25_hits"] += meta_dict.get("bm25_hits", 0)
+                    if meta_dict.get("rerank_provider", "").endswith(":fallback"):
+                        aggregated_metadata["rerank_provider"] = meta_dict["rerank_provider"]
 
         # 按分数降序去重
         seen = set()
@@ -252,6 +275,7 @@ class AgentGraphNodes:
             "retrieval_results": unique_results,
             "is_fallback": any_fallback,
             "max_score": self._current_max_score(unique_results),
+            "retrieval_metadata": aggregated_metadata,
             "tool_trace": self._trace(
                 state.get("tool_trace"),
                 node="multi_hop_retrieve",

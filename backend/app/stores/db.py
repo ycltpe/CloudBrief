@@ -126,6 +126,7 @@ class IndexMetadata(Base):
     parent_id = Column(Integer, ForeignKey("index_metadata.id"), nullable=True)
     reason = Column(String(32), nullable=True)
     source_changes_json = Column(Text, default="[]")
+    index_type = Column(String(32), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -326,6 +327,7 @@ class QueryLog(Base):
     latency_ms_total = Column(Integer, nullable=True)
     tool_trace = Column(JSON, default=list)
     self_querying_dropped_fields = Column(JSON, default=list)
+    extra_json = Column(JSON, default=dict, nullable=True)
     user_feedback = Column(String(16), nullable=True)
     user_feedback_note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

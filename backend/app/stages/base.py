@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Generic, TypeVar
 
@@ -40,6 +41,19 @@ class RetrievalResult(BaseModel):
     updated_at: datetime
     source_id: str
     score: float  # 该 Stage 输出的分数
+
+
+@dataclass
+class RetrievalCascadeMetadata:
+    """检索级联中间状态，用于写入 query_logs.extra_json。"""
+
+    vector_hits: int
+    bm25_hits: int
+    rrf_k: int
+    rerank_provider: str
+    applied_filter: str | None
+    index_version: str
+    index_type: str | None
 
 
 InputT = TypeVar("InputT", bound=BaseModel)

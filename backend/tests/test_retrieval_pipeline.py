@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.pipelines.retrieval import RetrievalPipeline
-from app.stages.base import RetrievalResult
+from app.stages.base import RetrievalCascadeMetadata, RetrievalResult
 
 
 @pytest.fixture
@@ -21,6 +21,7 @@ def pipeline():
             "stale_threshold_days": 90,
             "embedding_model": "text-embedding-v3",
             "milvus_uri": "http://localhost:19531",
+            "reranker_provider": "dashscope",
         }.get(key)
     )
     return pipeline
@@ -43,6 +44,7 @@ def active_index():
     return SimpleNamespace(
         collection_name="test_collection",
         bm25_index_path="/tmp/bm25.pkl",
+        index_type="IVF_FLAT",
     )
 
 
@@ -188,6 +190,53 @@ class TestRetrieveWithFreshnessFilter:
 
         assert output.is_fallback is True
         assert len(output.results) == 1
+
+    def test_retrieval_metadata_populated(self, pipeline, stage_mocks):
+        fresh = _make_result("fresh", datetime.utcnow() - timedelta(days=1), score=0.9)
+        stage_mocks.set_vector_results([fresh])
+        stage_mocks.set_bm25_results([fresh])
+        stage_mocks.set_fusion_results([fresh])
+        stage_mocks.set_rerank_results([fresh], is_fallback=False)
+
+        output = pipeline.retrieve("query", top_k=10, top_n=3, kb_id="default")
+
+        meta = output.retrieval_metadata
+        assert meta is not None
+        assert isinstance(meta, RetrievalCascadeMetadata)
+        assert meta.vector_hits == 1
+        assert meta.bm25_hits == 1
+        assert meta.rrf_k == 60
+        assert meta.rerank_provider == "dashscope"
+        assert meta.index_version == "test_collection"
+        assert meta.index_type == "IVF_FLAT"
+        assert meta.applied_filter is not None
+        assert meta.applied_filter.startswith('updated_at >= "')
+
+    def test_retrieval_metadata_rerank_fallback(self, pipeline, stage_mocks):
+        fresh = _make_result("fresh", datetime.utcnow() - timedelta(days=1), score=0.9)
+        stage_mocks.set_vector_results([fresh])
+        stage_mocks.set_bm25_results([])
+        stage_mocks.set_fusion_results([fresh])
+        stage_mocks.set_rerank_results([fresh], is_fallback=True)
+
+        output = pipeline.retrieve("query", top_k=10, top_n=3, kb_id="default")
+
+        assert output.retrieval_metadata.rerank_provider == "dashscope:fallback"
+
+    def test_retrieval_metadata_vector_failure(self, pipeline, stage_mocks):
+        stale_bm25 = _make_result("stale_bm25", datetime.utcnow() - timedelta(days=100), score=0.9)
+
+        stage_mocks.vector_cls.return_value.execute.side_effect = RuntimeError("milvus down")
+        stage_mocks.set_bm25_results([stale_bm25])
+        stage_mocks.set_fusion_results([stale_bm25])
+        stage_mocks.set_rerank_results([stale_bm25])
+
+        output = pipeline.retrieve("query", top_k=10, top_n=3, kb_id="default")
+
+        assert output.results == []
+        assert output.is_fallback is True
+        assert output.retrieval_metadata.vector_hits == 0
+        assert output.retrieval_metadata.bm25_hits == 1
 
 
 class TestFilterCombination:

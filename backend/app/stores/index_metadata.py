@@ -43,6 +43,7 @@ class IndexMetadataStore:
         kb_id: str = "default",
         reason: str = "rebuild",
         source_changes_json: str = "[]",
+        index_type: str | None = "IVF_FLAT",
     ) -> int:
         """原子切换：把新记录置为 active，旧记录置为 inactive，返回新记录 id。"""
         with self._session_factory() as session:
@@ -61,6 +62,7 @@ class IndexMetadataStore:
                 parent_id=current.id if current else None,
                 reason=reason,
                 source_changes_json=source_changes_json,
+                index_type=index_type,
             )
             session.add(new_meta)
             session.commit()

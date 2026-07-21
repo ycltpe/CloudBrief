@@ -11,7 +11,7 @@ from app.stages.adapters.lc_retrieval import (
     LCRetrievalInput,
 )
 from app.stages.adapters.reranker_adapter import create_reranker_adapter
-from app.stages.base import RetrievalResult
+from app.stages.base import RetrievalCascadeMetadata, RetrievalResult
 from app.stages.bm25_retrieval import BM25RetrievalInput, BM25RetrievalStage
 from app.stages.hybrid_fusion import HybridFusionInput, HybridFusionStage
 from app.stages.reranking import RerankingInput, RerankingStage
@@ -27,10 +27,13 @@ logger = structlog.get_logger()
 class RetrievalPipelineOutput:
     results: list[RetrievalResult]
     is_fallback: bool = False
+    retrieval_metadata: RetrievalCascadeMetadata | None = None
 
 
 class RetrievalPipeline:
     """检索管线：根据配置使用 Native 主路径或 LangChain 适配器。"""
+
+    RRF_K = 60
 
     def __init__(self, model_client):
         self.model_client = model_client
@@ -69,6 +72,32 @@ class RetrievalPipeline:
             return parts[0]
         return " AND ".join(f"({p})" for p in parts)
 
+    def _build_retrieval_metadata(
+        self,
+        *,
+        active,
+        vector_results: list[RetrievalResult],
+        bm25_results: list[RetrievalResult],
+        combined_filter: str | None,
+        reranked,
+    ) -> RetrievalCascadeMetadata:
+        """根据各级 Stage 输出构造级联元数据。"""
+        configured_provider = self.settings_service.get_runtime_value("reranker_provider")
+        is_fallback = reranked.is_fallback
+        rerank_provider = f"{configured_provider}:fallback" if is_fallback else configured_provider
+        index_type = getattr(active, "index_type", None)
+        if not index_type:
+            index_type = "IVF_FLAT"
+        return RetrievalCascadeMetadata(
+            vector_hits=len(vector_results),
+            bm25_hits=len(bm25_results),
+            rrf_k=self.RRF_K,
+            rerank_provider=rerank_provider,
+            applied_filter=combined_filter,
+            index_version=active.collection_name,
+            index_type=index_type,
+        )
+
     def retrieve(
         self,
         query: str,
@@ -91,6 +120,7 @@ class RetrievalPipeline:
             return RetrievalPipelineOutput(
                 results=output.results,
                 is_fallback=output.is_fallback,
+                retrieval_metadata=output.retrieval_metadata,
             )
 
         stale_threshold_days = self.settings_service.get_runtime_value("stale_threshold_days")
@@ -133,7 +163,7 @@ class RetrievalPipeline:
                 vector_results=vector_results,
                 bm25_results=bm25_results,
                 top_k=top_k,
-                k=60,
+                k=self.RRF_K,
             )
         ).fused_results
         reranked = rerank_stage.execute(
@@ -143,6 +173,14 @@ class RetrievalPipeline:
         # 检索期时效过滤兜底：剔除 BM25 等路径可能引入的过期片段
         cutoff_dt = datetime.utcnow() - timedelta(days=stale_threshold_days)
         filtered_results = [r for r in reranked.reranked_results if self._is_fresh(r, cutoff_dt)]
+
+        retrieval_metadata = self._build_retrieval_metadata(
+            active=active,
+            vector_results=vector_results,
+            bm25_results=bm25_results,
+            combined_filter=combined_filter,
+            reranked=reranked,
+        )
 
         latency_ms = int((time.perf_counter() - start) * 1000)
 
@@ -156,4 +194,5 @@ class RetrievalPipeline:
         return RetrievalPipelineOutput(
             results=filtered_results,
             is_fallback=is_fallback or reranked.is_fallback,
+            retrieval_metadata=retrieval_metadata,
         )

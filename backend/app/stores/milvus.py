@@ -46,10 +46,16 @@ class MilvusFilterError(Exception):
 class MilvusStore:
     """Milvus 向量存储封装，使用 MilvusClient 简化 API。"""
 
+    INDEX_TYPE = "IVF_FLAT"
+
     def __init__(self, uri: str, collection_name: str, dim: int = 1536):
         self.client = MilvusClient(uri=uri)
         self.collection_name = collection_name
         self.dim = dim
+
+    @property
+    def index_type(self) -> str:
+        return self.INDEX_TYPE
 
     def create_collection(self) -> None:
         if self.client.has_collection(collection_name=self.collection_name):

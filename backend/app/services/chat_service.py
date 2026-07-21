@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import json
 import re
 import time
@@ -280,6 +281,11 @@ class ChatService:
         )
 
         # 异步写入查询日志
+        retrieval_metadata = (
+            dataclasses.asdict(retrieval_output.retrieval_metadata)
+            if retrieval_output.retrieval_metadata
+            else None
+        )
         asyncio.create_task(
             asyncio.to_thread(
                 self._log_query,
@@ -303,6 +309,7 @@ class ChatService:
                 latency_ms_generate=latency_ms_generate,
                 latency_ms_total=latency_ms_total,
                 self_querying_dropped_fields=sq_dropped_fields,
+                retrieval_metadata=retrieval_metadata,
             )
         )
 
@@ -586,6 +593,11 @@ class ChatService:
                 graphrag_used = graphrag_enabled
 
             # 异步写入查询日志
+            retrieval_metadata = (
+                dataclasses.asdict(retrieval_output.retrieval_metadata)
+                if retrieval_output.retrieval_metadata
+                else None
+            )
             asyncio.create_task(
                 asyncio.to_thread(
                     self._log_query,
@@ -609,6 +621,7 @@ class ChatService:
                     latency_ms_generate=latency_ms_generate,
                     latency_ms_total=latency_ms_total,
                     self_querying_dropped_fields=sq_dropped_fields,
+                    retrieval_metadata=retrieval_metadata,
                 )
             )
         except Exception as exc:
@@ -791,6 +804,7 @@ class ChatService:
         latency_ms_total: int | None,
         tool_trace: list | None = None,
         self_querying_dropped_fields: list[str] | None = None,
+        retrieval_metadata: dict | None = None,
     ) -> None:
         """在后台线程中写入 query_logs，不阻塞主响应。"""
         try:
@@ -827,6 +841,7 @@ class ChatService:
                 latency_ms_total=latency_ms_total,
                 tool_trace=tool_trace,
                 self_querying_dropped_fields=self_querying_dropped_fields,
+                retrieval_metadata=retrieval_metadata,
             )
         except Exception as exc:
             logger.warning("query_log_insert_failed", user_id=user_id, error=str(exc))
@@ -968,6 +983,7 @@ class ChatService:
                     latency_ms_generate=self._trace_latency(tool_trace, "generate"),
                     latency_ms_total=latency_ms_total,
                     tool_trace=tool_trace,
+                    retrieval_metadata=final.get("retrieval_metadata"),
                 )
             )
         except Exception as exc:
@@ -1134,6 +1150,7 @@ class ChatService:
                     latency_ms_generate=self._trace_latency(tool_trace, "generate"),
                     latency_ms_total=latency_ms_total,
                     tool_trace=tool_trace,
+                    retrieval_metadata=final.get("retrieval_metadata"),
                 )
             )
         except Exception as exc:

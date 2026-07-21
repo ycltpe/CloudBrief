@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.config import get_settings
 from app.services.settings_service import SettingsService
 from app.stages.adapters.reranker_adapter import create_reranker_adapter
-from app.stages.base import AbstractStage, RetrievalResult
+from app.stages.base import AbstractStage, RetrievalCascadeMetadata, RetrievalResult
 from app.stages.hybrid_fusion import HybridFusionInput, HybridFusionStage
 from app.stages.reranking import RerankingInput, RerankingStage
 from app.stores.bm25_store import BM25Store
@@ -24,6 +24,7 @@ class LCRetrievalInput(BaseModel):
 class LCRetrievalOutput(BaseModel):
     results: list[RetrievalResult]
     is_fallback: bool = False
+    retrieval_metadata: RetrievalCascadeMetadata | None = None
 
 
 class LangChainRetrievalStage(AbstractStage[LCRetrievalInput, LCRetrievalOutput]):
@@ -129,7 +130,23 @@ class LangChainRetrievalStage(AbstractStage[LCRetrievalInput, LCRetrievalOutput]
             )
         )
 
+        configured_provider = self.settings_service.get_runtime_value("reranker_provider")
+        rerank_provider = f"{configured_provider}:fallback" if reranked.is_fallback else configured_provider
+        index_type = getattr(active, "index_type", None)
+        if not index_type:
+            index_type = "IVF_FLAT"
+        retrieval_metadata = RetrievalCascadeMetadata(
+            vector_hits=len(vector_results),
+            bm25_hits=len(bm25_results),
+            rrf_k=60,
+            rerank_provider=rerank_provider,
+            applied_filter=None,
+            index_version=active.collection_name,
+            index_type=index_type,
+        )
+
         return LCRetrievalOutput(
             results=reranked.reranked_results,
             is_fallback=reranked.is_fallback,
+            retrieval_metadata=retrieval_metadata,
         )

@@ -850,17 +850,20 @@ class ChatService:
                 plan_stage=self.plan_stage,
                 multi_hop_decompose_stage=self.multi_hop_decompose_stage,
             )
-            runner = AgentGraphRunner(deps)
-            async for event in runner.stream(
-                {
-                    "question": request.question,
-                    "conversation_id": conversation_id,
-                    "history": history,
-                    "kb_id": kb_id,
-                },
-                thread_id=conversation_id,
-            ):
-                yield event
+            runner = await AgentGraphRunner.create(deps, settings_service=self.settings_service)
+            try:
+                async for event in runner.stream(
+                    {
+                        "question": request.question,
+                        "conversation_id": conversation_id,
+                        "history": history,
+                        "kb_id": kb_id,
+                    },
+                    thread_id=conversation_id,
+                ):
+                    yield event
+            finally:
+                await runner.close()
 
             final = runner.final_state
             citations = final.get("citations", [])
@@ -872,19 +875,15 @@ class ChatService:
             query = final.get("rewritten_query", request.question)
             tool_trace = final.get("tool_trace", [])
 
-            yield StreamEvent(
-                type="citations",
-                data={
-                    "conversation_id": conversation_id,
-                    "citations": citations,
-                    "is_refusal": is_refusal,
-                    "is_stale": is_stale,
-                },
-            )
-            yield StreamEvent(
-                type="done",
-                data={"conversation_id": conversation_id},
-            )
+            # 中断时暂不持久化，等待恢复执行后再统一落库
+            if runner.interrupted:
+                logger.info(
+                    "agentic_stream_interrupted",
+                    conversation_id=conversation_id,
+                    thread_id=conversation_id,
+                )
+                return
+
             latency_ms_total = int((time.perf_counter() - start_total) * 1000)
 
             asyncio.create_task(
@@ -963,3 +962,160 @@ class ChatService:
             if entry.get("node") == node:
                 return entry.get("latency_ms")
         return None
+
+    async def get_agentic_state(self, conversation_id: str) -> dict:
+        """获取指定会话当前 agentic 编排状态快照。"""
+        deps = AgenticGraphDeps(
+            retrieval_pipeline=self.retrieval_pipeline,
+            generation_pipeline=self.generation_pipeline,
+            query_rewrite_stage=self.query_rewrite_stage,
+            grade_stage=self.grade_stage,
+            plan_stage=self.plan_stage,
+            multi_hop_decompose_stage=self.multi_hop_decompose_stage,
+        )
+        runner = await AgentGraphRunner.create(deps, settings_service=self.settings_service)
+        try:
+            return await runner.get_state(conversation_id)
+        finally:
+            await runner.close()
+
+    async def resume_agentic_stream(
+        self,
+        conversation_id: str,
+        resume_payload: dict | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """恢复被中断的 agentic 编排流并继续输出 SSE 事件。"""
+        user_id = None
+        received_at = datetime.utcnow()
+        start_total = time.perf_counter()
+        full_answer = ""
+        citations = []
+        is_refusal = False
+        is_stale = False
+        retrieval_results = []
+        is_fallback = False
+        query = ""
+        tool_trace = []
+
+        try:
+            yield StreamEvent(
+                type="status",
+                data={
+                    "step": "resuming",
+                    "message": "正在恢复编排执行…",
+                    "conversation_id": conversation_id,
+                },
+            )
+
+            deps = AgenticGraphDeps(
+                retrieval_pipeline=self.retrieval_pipeline,
+                generation_pipeline=self.generation_pipeline,
+                query_rewrite_stage=self.query_rewrite_stage,
+                grade_stage=self.grade_stage,
+                plan_stage=self.plan_stage,
+                multi_hop_decompose_stage=self.multi_hop_decompose_stage,
+            )
+            runner = await AgentGraphRunner.create(deps, settings_service=self.settings_service)
+            try:
+                async for event in runner.resume(
+                    thread_id=conversation_id,
+                    resume_payload=resume_payload,
+                ):
+                    if event.type == "chunk":
+                        full_answer += event.data.get("content", "")
+                    elif event.type == "citations":
+                        citations = event.data.get("citations", [])
+                        is_refusal = event.data.get("is_refusal", False)
+                        is_stale = event.data.get("is_stale", False)
+                    yield event
+            finally:
+                await runner.close()
+
+            final = runner.final_state
+            citations = final.get("citations", citations)
+            is_refusal = final.get("is_refusal", is_refusal)
+            is_stale = final.get("is_stale", is_stale)
+            full_answer = final.get("answer", full_answer)
+            retrieval_results = final.get("retrieval_results", retrieval_results)
+            is_fallback = final.get("is_fallback", is_fallback)
+            query = final.get("rewritten_query", query)
+            tool_trace = final.get("tool_trace", tool_trace)
+
+            if runner.interrupted:
+                logger.info(
+                    "agentic_resume_interrupted_again",
+                    conversation_id=conversation_id,
+                )
+                return
+
+            latency_ms_total = int((time.perf_counter() - start_total) * 1000)
+
+            asyncio.create_task(
+                asyncio.to_thread(
+                    self._persist_chat,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    question=final.get("question", ""),
+                    full_answer=full_answer,
+                    citations=citations,
+                    is_refusal=is_refusal,
+                    is_stale=is_stale,
+                )
+            )
+
+            graphrag_enabled = bool(
+                final.get("kb_id") and await self._is_shadow_mode_enabled(final.get("kb_id"))
+            )
+            graphrag_used = False
+            if graphrag_enabled:
+                asyncio.create_task(
+                    self._record_shadow_async(
+                        kb_id=final.get("kb_id"),
+                        user_id=user_id,
+                        question=final.get("question", ""),
+                        retrieval_results=retrieval_results,
+                        is_fallback=is_fallback,
+                        history=final.get("history", []),
+                        vector_answer=full_answer,
+                    )
+                )
+                graphrag_used = graphrag_enabled
+
+            asyncio.create_task(
+                asyncio.to_thread(
+                    self._log_query,
+                    user_id=user_id,
+                    received_at=received_at,
+                    original_question=final.get("question", ""),
+                    rewritten_question=query,
+                    kb_id=final.get("kb_id", "default"),
+                    retrieval_adapter=self.settings_service.get_runtime_value("retrieval_adapter"),
+                    is_fallback=is_fallback,
+                    max_score=final.get("max_score") if retrieval_results else None,
+                    retrieval_results=retrieval_results,
+                    answer=full_answer,
+                    citations=citations,
+                    is_refusal=is_refusal,
+                    is_stale=is_stale,
+                    graphrag_enabled=graphrag_enabled,
+                    graphrag_used=graphrag_used,
+                    latency_ms_rewrite=self._trace_latency(tool_trace, "rewrite"),
+                    latency_ms_retrieve=self._trace_latency(tool_trace, "retrieve"),
+                    latency_ms_generate=self._trace_latency(tool_trace, "generate"),
+                    latency_ms_total=latency_ms_total,
+                    tool_trace=tool_trace,
+                )
+            )
+        except Exception as exc:
+            logger.error(
+                "agentic_resume_failed",
+                conversation_id=conversation_id,
+                error=str(exc),
+            )
+            yield StreamEvent(
+                type="error",
+                data={
+                    "conversation_id": conversation_id,
+                    "message": str(exc),
+                },
+            )

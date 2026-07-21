@@ -1,0 +1,203 @@
+# generated: 2026-07-17T00:00:00
+# last_updated: 2026-07-17T00:00:00
+# project: knowledgeAgents
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /Users/yechen/PycharmProjects/knowledgeAgents/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+
+# KEY PREFIX CONVENTION:
+# ======================
+# - Main CloudBrief 支持副驾 epics (from epics.md): plain numeric keys, e.g. 1-1-xxx / epic-1
+# - Agentic RAG 增量 epics: agentic- prefix, e.g. agentic-1-1-xxx / agentic-epic-1
+# - GraphRAG 增量 epics: graphrag- prefix, e.g. graphrag-1-1-xxx / graphrag-epic-1
+
+generated: 2026-07-17T00:00:00
+last_updated: 2026-07-17T00:00:00
+project: knowledgeAgents
+project_key: NOKEY
+tracking_system: file-system
+story_location: /Users/yechen/PycharmProjects/knowledgeAgents/_bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 1: 本地开发环境与系统骨架
+  epic-1: in-progress
+  1-1-init-backend-project-structure: ready-for-dev
+  1-2-config-system-and-env-template: backlog
+  1-3-docker-compose-local-dependencies: backlog
+  1-4-unified-model-client-abstraction: backlog
+  1-5-structured-logging-and-request-id: backlog
+  1-6-mysql-schema-initialization: backlog
+  1-7-api-contract-documentation: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: 知识库导入与索引构建
+  epic-2: backlog
+  2-1-four-knowledge-source-parsers: backlog
+  2-2-text-chunking-stage: backlog
+  2-3-native-embedding-stage: backlog
+  2-4-bm25-index-build: backlog
+  2-5-milvus-collection-design-and-write: backlog
+  2-6-celery-async-index-rebuild-task: backlog
+  2-7-atomic-active-index-switch: backlog
+  2-8-frontend-workflows-index-progress: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: 混合检索与证据精排
+  epic-3: backlog
+  3-1-vector-retrieval-stage: backlog
+  3-2-bm25-retrieval-stage: backlog
+  3-3-rrf-fusion-stage: backlog
+  3-4-reranker-stage: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: 可信答案生成
+  epic-4: backlog
+  4-1-generation-pipeline-and-prompt: backlog
+  4-2-citation-parser-and-dto: backlog
+  4-3-hard-refusal-logic: backlog
+  4-4-answer-staleness-hint: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: 多轮会话管理
+  epic-5: backlog
+  5-1-conversation-store-crud: backlog
+  5-2-chat-service-session-orchestration: backlog
+  5-3-query-rewrite-stage: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Web 聊天界面与索引重建可视化
+  epic-6: backlog
+  6-1-nextjs-project-and-llamaindex-ui: backlog
+  6-2-chat-main-interface: backlog
+  6-3-citation-display-component: backlog
+  6-4-multi-turn-follow-up: backlog
+  6-5-refusal-and-staleness-styles: backlog
+  6-6-rebuild-index-entry-and-sse: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: 效果评测
+  epic-7: backlog
+  7-1-synthetic-eval-set-construction: backlog
+  7-2-auto-eval-script-and-metrics: backlog
+  7-3-latency-metrics: backlog
+  7-4-ragas-integration-and-storage: backlog
+  7-5-eval-results-api: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: 框架适配与本地模型 fallback
+  epic-8: backlog
+  8-1-langchain-retrieval-adapter: backlog
+  8-2-langchain-generation-adapter: backlog
+  8-3-local-open-source-llm-fallback: backlog
+  epic-8-retrospective: optional
+
+  # Epic 9: 管理后台
+  epic-9: backlog
+  9-1-jwt-auth-and-registration: backlog
+  9-2-role-permission-middleware: backlog
+  9-3-dashboard-api-and-page: backlog
+  9-4-user-management: backlog
+  9-5-system-settings-persistence: backlog
+  9-6-kb-directory-management: backlog
+  9-7-kb-file-upload-and-delete: backlog
+  9-8-kb-integrated-rebuild-index: backlog
+  9-9-chat-assistant-admin-entry: backlog
+  9-10-ragas-eval-audit-list-page: backlog
+  9-11-ragas-eval-detail-and-human-review: backlog
+  9-12-admin-frontend-layout-and-routes: backlog
+  epic-9-retrospective: optional
+
+  # Agentic RAG - Epic 1: 编排基座与无损平移
+  agentic-epic-1: backlog
+  agentic-1-1-add-langgraph-dependency: backlog
+  agentic-1-2-orchestration-mode-switch: backlog
+  agentic-1-3-graph-state-and-skeleton: backlog
+  agentic-1-4-agentic-mode-sse-mapping: backlog
+  agentic-1-5-dual-path-metrics-and-ragas: backlog
+  agentic-epic-1-retrospective: optional
+
+  # Agentic RAG - Epic 2: 检索质量纠偏
+  agentic-epic-2: backlog
+  agentic-2-1-grade-node: backlog
+  agentic-2-2-rewrite-retry-edge: backlog
+  agentic-2-3-refusal-alignment-and-validation: backlog
+  agentic-epic-2-retrospective: optional
+
+  # Agentic RAG - Epic 3: 自适应路由与多跳工具化
+  agentic-epic-3: backlog
+  agentic-3-1-modelclient-tool-calling: backlog
+  agentic-3-2-plan-node-routing: backlog
+  agentic-3-3-multi-hop-decomposition: backlog
+  agentic-3-4-tool-trace-logging: backlog
+  agentic-3-5-multi-hop-eval-samples: done
+  agentic-epic-3-retrospective: optional
+
+  # Agentic RAG - Epic 4: 编排状态持久化与中断恢复
+  agentic-epic-4: in-progress
+  agentic-4-1-checkpointer-sqlite: done
+  agentic-4-2-interrupt-and-resume: done
+  agentic-4-3-redis-checkpointer-evaluation: backlog
+  agentic-epic-4-retrospective: optional
+
+  # GraphRAG - Epic 1: 概念验证
+  graphrag-epic-1: backlog
+  graphrag-1-1-neo4j-dev-environment: backlog
+  graphrag-1-2-minimal-graph-store: backlog
+  graphrag-1-3-graph-extraction-service: backlog
+  graphrag-1-4-graphrag-context-stage: backlog
+  graphrag-1-5-gold-set-and-poc-evaluation: backlog
+  graphrag-epic-1-retrospective: optional
+
+  # GraphRAG - Epic 2: 工程 MVP
+  graphrag-epic-2: backlog
+  graphrag-2-1-kb-graphrag-switch-and-schema: backlog
+  graphrag-2-2-celery-graph-build-task: backlog
+  graphrag-2-3-sse-progress-to-frontend: backlog
+  graphrag-2-4-generation-pipeline-integration: backlog
+  graphrag-2-5-shadow-mode-data-collection: backlog
+  graphrag-2-6-admin-graphrag-ui: backlog
+  graphrag-2-7-kb-creation-graphrag-guidance: backlog
+  graphrag-epic-2-retrospective: optional
+
+  # GraphRAG - Epic 3: 扩展与优化
+  graphrag-epic-3: backlog
+  graphrag-3-1-second-kb-pilot: backlog
+  graphrag-3-2-graph-incremental-update: backlog
+  graphrag-3-3-performance-and-cost-monitoring: backlog
+  graphrag-3-4-rollout-decision-report: backlog
+  graphrag-epic-3-retrospective: optional

@@ -102,6 +102,11 @@ _register(SettingMeta(
     type="choice", default="native", options=["native", "langchain", "agentic"],
 ))
 _register(SettingMeta(
+    key="agentic_interrupt_enabled", label="Agentic 编排中断点", group="适配器",
+    description="启用后，agentic 多跳分解后会暂停执行，等待人工确认再继续（触发式）",
+    type="bool", default=False,
+))
+_register(SettingMeta(
     key="parser", label="文档解析器", group="适配器",
     description="文档解析阶段使用的实现适配器，重建索引后生效",
     type="choice", default="native", options=["native", "llamaindex"],
@@ -321,10 +326,25 @@ _register(SettingMeta(
     type="str", default="./data/bm25_index.pkl",
 ))
 _register(SettingMeta(
+    key="checkpoint_backend", label="LangGraph 编排状态持久化后端", group="存储连接",
+    description="agentic 模式下 LangGraph 编排状态的持久化后端：sqlite（单进程本地）或 redis（多进程共享，复用 REDIS_URL）",
+    type="choice", default="sqlite", options=["sqlite", "redis"], restart_required=True,
+))
+_register(SettingMeta(
     key="checkpoint_sqlite_path", label="LangGraph 编排状态 SQLite 路径", group="存储连接",
     description="agentic 模式下 LangGraph 编排状态持久化的 SQLite 文件路径",
     type="str", default="./data/checkpoints.sqlite",
     restart_required=True,
+))
+_register(SettingMeta(
+    key="checkpoint_redis_prefix", label="LangGraph checkpoint Redis key 前缀", group="存储连接",
+    description="Redis checkpointer 的 key 前缀，避免与现有缓存/锁/Pub-Sub key 冲突",
+    type="str", default="cloudbrief:checkpoint", restart_required=True,
+))
+_register(SettingMeta(
+    key="checkpoint_redis_ttl", label="LangGraph checkpoint Redis 过期时间（分钟）", group="存储连接",
+    description="Redis checkpoint key 的过期时间，0 表示不过期；过期后状态不可恢复",
+    type="int", default=0, min=0, restart_required=True,
 ))
 _register(SettingMeta(
     key="kb_storage_path", label="知识库文件存储路径", group="存储连接",

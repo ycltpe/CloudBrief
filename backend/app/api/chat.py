@@ -3,7 +3,7 @@ import json
 import time
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.dependencies import get_current_user_optional
@@ -160,6 +160,77 @@ async def update_conversation_title(
             "update_conversation_title_failed",
             conversation_id=conversation_id,
             user_id=current_user.id,
+            error=str(exc),
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/chat/{conversation_id}/agentic-state")
+async def get_agentic_state(
+    conversation_id: str,
+    current_user: UserOut | None = Depends(get_current_user_optional),
+    chat_service: ChatService = Depends(get_chat_service),
+):
+    """获取指定会话的 agentic 编排状态快照（含中断等待状态）。"""
+    try:
+        state = await chat_service.get_agentic_state(conversation_id)
+        return {
+            "conversation_id": conversation_id,
+            "state": state,
+            "interrupted": bool(state.get("resume_payload") is None and state.get("sub_questions")),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "agentic_state_failed",
+            conversation_id=conversation_id,
+            error=str(exc),
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/chat/{conversation_id}/agentic-resume")
+async def resume_agentic_stream(
+    conversation_id: str,
+    resume_payload: dict = Body(default={}),
+    current_user: UserOut | None = Depends(get_current_user_optional),
+    chat_service: ChatService = Depends(get_chat_service),
+):
+    """恢复被中断的 agentic 编排流，以 SSE 形式继续输出后续事件。"""
+    try:
+        async def event_generator():
+            stream_start = time.perf_counter()
+            event_count = 0
+            async for event in chat_service.resume_agentic_stream(
+                conversation_id=conversation_id,
+                resume_payload=resume_payload,
+            ):
+                event_count += 1
+                yield _format_sse(event)
+            logger.info(
+                "agentic_resume_stream_response_closed",
+                conversation_id=conversation_id,
+                user_id=current_user.id if current_user else None,
+                event_count=event_count,
+                latency_ms=int((time.perf_counter() - stream_start) * 1000),
+            )
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "agentic_resume_failed",
+            conversation_id=conversation_id,
             error=str(exc),
         )
         raise HTTPException(status_code=500, detail=str(exc))

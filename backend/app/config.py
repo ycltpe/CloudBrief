@@ -110,8 +110,14 @@ class Settings(BaseSettings):
     # 编排模式
     orchestration_mode: Literal["native", "langchain", "agentic"] = "native"
 
-    # LangGraph 编排状态持久化（SQLite）路径
+    # Agentic 编排中断点（触发式）：启用后多跳分解前可暂停等待人工确认
+    agentic_interrupt_enabled: bool = False
+
+    # LangGraph 编排状态持久化
+    checkpoint_backend: Literal["sqlite", "redis"] = "sqlite"
     checkpoint_sqlite_path: Path = Path("./data/checkpoints.sqlite")
+    checkpoint_redis_prefix: str = "cloudbrief:checkpoint"
+    checkpoint_redis_ttl: int = 0  # 分钟，0 表示不过期
 
     @property
     def mysql_database(self) -> str:

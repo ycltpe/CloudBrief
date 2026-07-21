@@ -75,11 +75,13 @@ class QueryLogStore:
         latency_ms_generate: int | None,
         latency_ms_total: int | None,
         tool_trace: list | None = None,
+        self_querying_dropped_fields: list[str] | None = None,
     ) -> QueryLog:
         original_question = self._desensitize(original_question)
         rewritten_question = self._desensitize(rewritten_question) if rewritten_question else None
         answer = self._desensitize(answer) if answer else None
         tool_trace = self._desensitize_trace(tool_trace)
+        self_querying_dropped_fields = self_querying_dropped_fields or []
 
         log_hash = self._hash(
             f"{user_id}:{original_question}:{received_at.isoformat()}"
@@ -115,6 +117,7 @@ class QueryLogStore:
                 latency_ms_generate=latency_ms_generate,
                 latency_ms_total=latency_ms_total,
                 tool_trace=tool_trace,
+                self_querying_dropped_fields=self_querying_dropped_fields,
             )
             session.add(log)
             session.commit()

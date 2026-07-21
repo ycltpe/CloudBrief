@@ -30,6 +30,7 @@ from app.stages.graph_rag_context_stage import GraphRAGContextStage
 from app.stages.multi_hop_decompose import MultiHopDecomposeStage
 from app.stages.plan import PlanStage
 from app.stages.query_rewrite import QueryRewriteInput, QueryRewriteStage
+from app.stages.self_querying import SelfQueryingInput, SelfQueryingStage
 from app.stores.conversation import ConversationStore
 from app.stores.graph_schema_store import GraphSchemaStore
 from app.stores.graph_shadow_store import GraphShadowStore
@@ -52,6 +53,7 @@ class ChatService:
         self.graph_store = graph_store
         self.graph_schema_store = GraphSchemaStore()
         self.query_rewrite_stage = QueryRewriteStage()
+        self.self_querying_stage = SelfQueryingStage(self.model_client)
         self.grade_stage = GradeStage(self.model_client)
         self.plan_stage = PlanStage(self.model_client, self.graph_schema_store)
         self.multi_hop_decompose_stage = MultiHopDecomposeStage(self.model_client)
@@ -168,10 +170,21 @@ class ChatService:
         query = rewrite_output.rewritten_query
         latency_ms_rewrite = int((time.perf_counter() - start_rewrite) * 1000)
 
+        # Self-Querying：把问题中的时间/来源类型约束翻译为 Milvus filter
+        sq_dropped_fields: list[str] = []
+        applied_filter: str | None = None
+        if self.settings_service.get_runtime_value("self_querying_enabled"):
+            sq_output = await self.self_querying_stage.execute(
+                SelfQueryingInput(question=query)
+            )
+            query = sq_output.query
+            applied_filter = sq_output.filter
+            sq_dropped_fields = sq_output.dropped_fields
+
         # 检索
         start_retrieve = time.perf_counter()
         retrieval_output = await asyncio.to_thread(
-            self.retrieval_pipeline.retrieve, query, 50, 5, kb_id
+            self.retrieval_pipeline.retrieve, query, 50, 5, kb_id, applied_filter
         )
         retrieval_results = retrieval_output.results
         is_fallback = retrieval_output.is_fallback
@@ -289,6 +302,7 @@ class ChatService:
                 latency_ms_retrieve=latency_ms_retrieve,
                 latency_ms_generate=latency_ms_generate,
                 latency_ms_total=latency_ms_total,
+                self_querying_dropped_fields=sq_dropped_fields,
             )
         )
 
@@ -340,6 +354,8 @@ class ChatService:
         latency_ms_rewrite = None
         latency_ms_retrieve = None
         latency_ms_generate = None
+        sq_dropped_fields: list[str] = []
+        applied_filter: str | None = None
 
         try:
             # 立刻让前端感知到“已收到”，避免长时间空白
@@ -390,6 +406,16 @@ class ChatService:
 
             kb_id = await self._resolve_kb_id(request, current_user)
             latency_ms_rewrite = int((time.perf_counter() - start_rewrite) * 1000)
+
+            # Self-Querying：把问题中的时间/来源类型约束翻译为 Milvus filter
+            if self.settings_service.get_runtime_value("self_querying_enabled"):
+                sq_output = await self.self_querying_stage.execute(
+                    SelfQueryingInput(question=query)
+                )
+                query = sq_output.query
+                applied_filter = sq_output.filter
+                sq_dropped_fields = sq_output.dropped_fields
+
             logger.info(
                 "chat_stream_step_done",
                 step="resolve_kb",
@@ -407,7 +433,7 @@ class ChatService:
             # 检索阶段也放到线程池，避免阻塞 ASGI 事件循环
             start_retrieve = time.perf_counter()
             retrieval_output = await asyncio.to_thread(
-                self.retrieval_pipeline.retrieve, query, 50, 5, kb_id
+                self.retrieval_pipeline.retrieve, query, 50, 5, kb_id, applied_filter
             )
             retrieval_results = retrieval_output.results
             is_fallback = retrieval_output.is_fallback
@@ -582,6 +608,7 @@ class ChatService:
                     latency_ms_retrieve=latency_ms_retrieve,
                     latency_ms_generate=latency_ms_generate,
                     latency_ms_total=latency_ms_total,
+                    self_querying_dropped_fields=sq_dropped_fields,
                 )
             )
         except Exception as exc:
@@ -763,6 +790,7 @@ class ChatService:
         latency_ms_generate: int | None,
         latency_ms_total: int | None,
         tool_trace: list | None = None,
+        self_querying_dropped_fields: list[str] | None = None,
     ) -> None:
         """在后台线程中写入 query_logs，不阻塞主响应。"""
         try:
@@ -773,6 +801,7 @@ class ChatService:
                 "reranker_provider": self.settings_service.get_runtime_value("reranker_provider"),
                 "refusal_threshold": self.settings_service.get_runtime_value("refusal_threshold"),
                 "stale_threshold_days": self.settings_service.get_runtime_value("stale_threshold_days"),
+                "self_querying_enabled": self.settings_service.get_runtime_value("self_querying_enabled"),
             }
             self.query_log_store.insert(
                 user_id=user_id,
@@ -797,6 +826,7 @@ class ChatService:
                 latency_ms_generate=latency_ms_generate,
                 latency_ms_total=latency_ms_total,
                 tool_trace=tool_trace,
+                self_querying_dropped_fields=self_querying_dropped_fields,
             )
         except Exception as exc:
             logger.warning("query_log_insert_failed", user_id=user_id, error=str(exc))

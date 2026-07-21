@@ -38,6 +38,54 @@ def _make_result(chunk_id: str, updated_at: datetime | str, score: float = 0.5) 
     )
 
 
+@pytest.fixture
+def active_index():
+    return SimpleNamespace(
+        collection_name="test_collection",
+        bm25_index_path="/tmp/bm25.pkl",
+    )
+
+
+@pytest.fixture
+def stage_mocks(pipeline, active_index):
+    """统一 mock 检索管线的 store 与 stage。"""
+    with patch.object(pipeline.index_metadata_store, "get_active", return_value=active_index), \
+            patch("app.pipelines.retrieval.MilvusStore") as _milvus, \
+            patch("app.pipelines.retrieval.BM25Store") as mock_bm25, \
+            patch("app.pipelines.retrieval.VectorRetrievalStage") as mock_vector_cls, \
+            patch("app.pipelines.retrieval.BM25RetrievalStage") as mock_bm25_cls, \
+            patch("app.pipelines.retrieval.HybridFusionStage") as mock_fusion_cls, \
+            patch("app.pipelines.retrieval.create_reranker_adapter") as _create_reranker, \
+            patch("app.pipelines.retrieval.RerankingStage") as mock_rerank_cls:
+        mock_bm25.return_value.load = MagicMock()
+
+        def _set_vector_results(results, is_fallback=False):
+            mock_vector_cls.return_value.execute.return_value = MagicMock(results=results)
+
+        def _set_bm25_results(results):
+            mock_bm25_cls.return_value.execute.return_value = MagicMock(results=results)
+
+        def _set_fusion_results(results):
+            mock_fusion_cls.return_value.execute.return_value = MagicMock(fused_results=results)
+
+        def _set_rerank_results(results, is_fallback=False):
+            mock_rerank_cls.return_value.execute.return_value = MagicMock(
+                reranked_results=results,
+                is_fallback=is_fallback,
+            )
+
+        yield SimpleNamespace(
+            vector_cls=mock_vector_cls,
+            bm25_cls=mock_bm25_cls,
+            fusion_cls=mock_fusion_cls,
+            rerank_cls=mock_rerank_cls,
+            set_vector_results=_set_vector_results,
+            set_bm25_results=_set_bm25_results,
+            set_fusion_results=_set_fusion_results,
+            set_rerank_results=_set_rerank_results,
+        )
+
+
 class TestFreshnessFilterHelpers:
     """时效过滤表达式与 freshness 判断辅助函数测试。"""
 
@@ -75,52 +123,6 @@ class TestFreshnessFilterHelpers:
 
 class TestRetrieveWithFreshnessFilter:
     """RetrievalPipeline.retrieve 检索期时效过滤集成测试。"""
-
-    @pytest.fixture
-    def active_index(self):
-        return SimpleNamespace(
-            collection_name="test_collection",
-            bm25_index_path="/tmp/bm25.pkl",
-        )
-
-    @pytest.fixture
-    def stage_mocks(self, pipeline, active_index):
-        """统一 mock 检索管线的 store 与 stage。"""
-        with patch.object(pipeline.index_metadata_store, "get_active", return_value=active_index), \
-                patch("app.pipelines.retrieval.MilvusStore") as _milvus, \
-                patch("app.pipelines.retrieval.BM25Store") as mock_bm25, \
-                patch("app.pipelines.retrieval.VectorRetrievalStage") as mock_vector_cls, \
-                patch("app.pipelines.retrieval.BM25RetrievalStage") as mock_bm25_cls, \
-                patch("app.pipelines.retrieval.HybridFusionStage") as mock_fusion_cls, \
-                patch("app.pipelines.retrieval.create_reranker_adapter") as _create_reranker, \
-                patch("app.pipelines.retrieval.RerankingStage") as mock_rerank_cls:
-            mock_bm25.return_value.load = MagicMock()
-
-            def _set_vector_results(results, is_fallback=False):
-                mock_vector_cls.return_value.execute.return_value = MagicMock(results=results)
-
-            def _set_bm25_results(results):
-                mock_bm25_cls.return_value.execute.return_value = MagicMock(results=results)
-
-            def _set_fusion_results(results):
-                mock_fusion_cls.return_value.execute.return_value = MagicMock(fused_results=results)
-
-            def _set_rerank_results(results, is_fallback=False):
-                mock_rerank_cls.return_value.execute.return_value = MagicMock(
-                    reranked_results=results,
-                    is_fallback=is_fallback,
-                )
-
-            yield SimpleNamespace(
-                vector_cls=mock_vector_cls,
-                bm25_cls=mock_bm25_cls,
-                fusion_cls=mock_fusion_cls,
-                rerank_cls=mock_rerank_cls,
-                set_vector_results=_set_vector_results,
-                set_bm25_results=_set_bm25_results,
-                set_fusion_results=_set_fusion_results,
-                set_rerank_results=_set_rerank_results,
-            )
 
     def test_vector_stage_receives_freshness_filter(self, pipeline, stage_mocks):
         stage_mocks.set_vector_results([])
@@ -186,3 +188,36 @@ class TestRetrieveWithFreshnessFilter:
 
         assert output.is_fallback is True
         assert len(output.results) == 1
+
+
+class TestFilterCombination:
+    """外部 filter（Self-Querying）与 freshness filter 的合并。"""
+
+    def test_combine_filters_all_none_returns_none(self):
+        assert RetrievalPipeline._combine_filters(None, None) is None
+        assert RetrievalPipeline._combine_filters(None, "", None) is None
+
+    def test_combine_filters_single_part_unchanged(self):
+        assert RetrievalPipeline._combine_filters('a == "b"') == 'a == "b"'
+        assert RetrievalPipeline._combine_filters(None, 'a == "b"') == 'a == "b"'
+
+    def test_combine_filters_joins_with_and(self):
+        combined = RetrievalPipeline._combine_filters('a == "b"', 'c >= "d"')
+        assert combined == '(a == "b") AND (c >= "d")'
+
+    def test_retrieve_combines_self_querying_and_freshness_filters(self, pipeline, stage_mocks):
+        stage_mocks.set_vector_results([])
+        stage_mocks.set_bm25_results([])
+        stage_mocks.set_fusion_results([])
+        stage_mocks.set_rerank_results([])
+
+        external_filter = 'source_type == "changelog"'
+        pipeline.retrieve(
+            "query", top_k=10, top_n=3, kb_id="default", filter=external_filter
+        )
+
+        vector_execute = stage_mocks.vector_cls.return_value.execute
+        input_data = vector_execute.call_args.args[0]
+        assert input_data.filter.startswith('(updated_at >= "')
+        assert 'source_type == "changelog"' in input_data.filter
+        assert " AND " in input_data.filter

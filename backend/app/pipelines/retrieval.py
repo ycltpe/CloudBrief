@@ -59,12 +59,23 @@ class RetrievalPipeline:
                 return True
         return True
 
+    @staticmethod
+    def _combine_filters(*filters: str | None) -> str | None:
+        """把多个 filter 用 AND 连接，自动过滤空值。"""
+        parts = [f.strip() for f in filters if f and f.strip()]
+        if not parts:
+            return None
+        if len(parts) == 1:
+            return parts[0]
+        return " AND ".join(f"({p})" for p in parts)
+
     def retrieve(
         self,
         query: str,
         top_k: int = 50,
         top_n: int = 5,
         kb_id: str = "default",
+        filter: str | None = None,
     ) -> RetrievalPipelineOutput:
         import time
 
@@ -84,6 +95,7 @@ class RetrievalPipeline:
 
         stale_threshold_days = self.settings_service.get_runtime_value("stale_threshold_days")
         freshness_filter = self._build_freshness_filter(stale_threshold_days)
+        combined_filter = self._combine_filters(freshness_filter, filter)
 
         active = self.index_metadata_store.get_active(kb_id)
         if not active:
@@ -105,7 +117,7 @@ class RetrievalPipeline:
         vector_results: list[RetrievalResult] = []
         try:
             vector_results = vector_stage.execute(
-                VectorRetrievalInput(query=query, top_k=top_k, filter=freshness_filter),
+                VectorRetrievalInput(query=query, top_k=top_k, filter=combined_filter),
                 model_name=runtime_embedding_model,
             ).results
         except Exception as exc:

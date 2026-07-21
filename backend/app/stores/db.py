@@ -325,6 +325,7 @@ class QueryLog(Base):
     latency_ms_generate = Column(Integer, nullable=True)
     latency_ms_total = Column(Integer, nullable=True)
     tool_trace = Column(JSON, default=list)
+    self_querying_dropped_fields = Column(JSON, default=list)
     user_feedback = Column(String(16), nullable=True)
     user_feedback_note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

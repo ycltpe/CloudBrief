@@ -85,6 +85,11 @@ _register(SettingMeta(
     type="bool", default=True,
 ))
 _register(SettingMeta(
+    key="self_querying_enabled", label="Self-Querying 元数据过滤", group="功能开关",
+    description="启用后，系统会尝试把用户问题中的时间/来源类型约束自动翻译为 Milvus filter",
+    type="bool", default=False,
+))
+_register(SettingMeta(
     key="ocr_enabled", label="扫描件 OCR 识别", group="功能开关",
     description="对无文字层的 PDF 页调用视觉模型识别文字",
     type="bool", default=True,

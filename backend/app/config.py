@@ -80,6 +80,7 @@ class Settings(BaseSettings):
 
     # 功能开关
     auto_index_on_upload: bool = True
+    self_querying_enabled: bool = False
 
     # Embedding 批大小（DashScope text-embedding-v3 上限为 10）
     embedding_batch_size: int = 10

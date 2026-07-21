@@ -1,10 +1,10 @@
 ---
-title: "CloudBrief 支持副驾 — 架构设计说明（面试讲解版）"
+title: "CloudBrief 支持副驾 — 架构设计说明"
 created: 2026-07-02
 updated: 2026-07-03
 ---
 
-# CloudBrief 支持副驾 — 架构设计说明（面试讲解版）
+# CloudBrief 支持副驾 — 架构设计说明
 
 > 本文档面向作品集读者与面试官，用自然语言解释架构 spine 中的关键决策、数据流与取舍。对应的 terse spine 见 `ARCHITECTURE-SPINE.md`。
 

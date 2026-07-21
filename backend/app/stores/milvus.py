@@ -1,9 +1,46 @@
+import re
 from datetime import datetime
 from typing import Any
 
 from pymilvus import DataType, MilvusClient
 
 from app.stages.base import Chunk, RetrievalResult
+
+# 检索期过滤允许的标量字段白名单
+FILTER_FIELD_WHITELIST = {"source_type", "title", "updated_at", "source_id"}
+
+# Milvus boolean expression 保留关键字（大小写不敏感）
+_FILTER_RESERVED_KEYWORDS = {
+    "and",
+    "or",
+    "not",
+    "in",
+    "like",
+    "match",
+    "exists",
+    "array",
+    "json",
+    "int",
+    "float",
+    "varchar",
+    "bool",
+    "true",
+    "false",
+    "null",
+}
+
+# 先移除单/双引号字符串，再提取标识符
+_FILTER_STRING_RE = re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"|\'[^\'\\]*(?:\\.[^\'\\]*)*\'')
+_FILTER_IDENTIFIER_RE = re.compile(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b")
+
+
+class MilvusFilterError(Exception):
+    """过滤表达式字段白名单校验失败。"""
+
+    def __init__(self, message: str, code: str = "INVALID_FILTER_FIELD"):
+        super().__init__(message)
+        self.message = message
+        self.code = code
 
 
 class MilvusStore:
@@ -76,17 +113,46 @@ class MilvusStore:
         self.client.insert(collection_name=self.collection_name, data=rows)
         self.client.flush(collection_name=self.collection_name)
 
+    @staticmethod
+    def _validate_filter(filter_expr: str | None) -> str | None:
+        """校验过滤表达式中的字段均在白名单内。
+
+        返回原表达式（去除首尾空格），若为空或 None 则返回 None。
+        """
+        if filter_expr is None:
+            return None
+        expr = filter_expr.strip()
+        if not expr:
+            return None
+
+        cleaned = _FILTER_STRING_RE.sub("", expr)
+        for identifier in _FILTER_IDENTIFIER_RE.findall(cleaned):
+            lower = identifier.lower()
+            if lower in _FILTER_RESERVED_KEYWORDS or identifier in FILTER_FIELD_WHITELIST:
+                continue
+            raise MilvusFilterError(
+                f"过滤字段 '{identifier}' 不在允许的白名单内，"
+                f"仅支持: {', '.join(sorted(FILTER_FIELD_WHITELIST))}"
+            )
+        return expr
+
     def search(
         self,
         query_embedding: list[float],
         top_k: int = 50,
+        filter: str | None = None,
     ) -> list[RetrievalResult]:
-        results = self.client.search(
-            collection_name=self.collection_name,
-            data=[query_embedding],
-            limit=top_k,
-            output_fields=["chunk_id", "source_type", "title", "updated_at", "source_id", "content"],
-        )
+        search_params: dict[str, Any] = {
+            "collection_name": self.collection_name,
+            "data": [query_embedding],
+            "limit": top_k,
+            "output_fields": ["chunk_id", "source_type", "title", "updated_at", "source_id", "content"],
+        }
+        validated_filter = self._validate_filter(filter)
+        if validated_filter is not None:
+            search_params["filter"] = validated_filter
+
+        results = self.client.search(**search_params)
         retrieval_results: list[RetrievalResult] = []
         for group in results:
             for hit in group:
@@ -142,5 +208,3 @@ class MilvusStore:
                 break
             offset += batch_size
         return results
-        if self.client.has_collection(collection_name=self.collection_name):
-            self.client.drop_collection(collection_name=self.collection_name)

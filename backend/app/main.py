@@ -13,6 +13,7 @@ from app.logging_config import RequestIdMiddleware, configure_logging
 from app.metrics import HTTP_REQUEST_DURATION, HTTP_REQUESTS_TOTAL
 from app.stores.db import init_db
 from app.stores.graph_store import GraphStore
+from app.stores.milvus import MilvusFilterError
 
 logger = structlog.get_logger()
 
@@ -81,6 +82,20 @@ app.include_router(index.router)
 app.include_router(eval.router)
 app.include_router(kb_access.router)
 app.include_router(metrics_api.router)
+
+
+@app.exception_handler(MilvusFilterError)
+async def milvus_filter_error_handler(request: Request, exc: MilvusFilterError):
+    logger.warning("invalid_milvus_filter", error=exc.message, path=request.url.path)
+    return JSONResponse(
+        status_code=400,
+        content={
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+            }
+        },
+    )
 
 
 @app.exception_handler(Exception)

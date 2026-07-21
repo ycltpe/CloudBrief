@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 import structlog
 
@@ -37,6 +38,27 @@ class RetrievalPipeline:
         self.index_metadata_store = IndexMetadataStore()
         self.settings_service = SettingsService()
 
+    @staticmethod
+    def _build_freshness_filter(stale_threshold_days: int) -> str | None:
+        """根据时效阈值构建 Milvus 标量过滤表达式。"""
+        if stale_threshold_days <= 0:
+            return None
+        cutoff = datetime.utcnow() - timedelta(days=stale_threshold_days)
+        return f'updated_at >= "{cutoff.isoformat()}"'
+
+    @staticmethod
+    def _is_fresh(result: RetrievalResult, cutoff: datetime) -> bool:
+        """判断单条检索结果是否在 cutoff 之后更新。"""
+        updated_at = result.updated_at
+        if isinstance(updated_at, datetime):
+            return updated_at >= cutoff
+        if isinstance(updated_at, str):
+            try:
+                return datetime.fromisoformat(updated_at) >= cutoff
+            except ValueError:
+                return True
+        return True
+
     def retrieve(
         self,
         query: str,
@@ -60,6 +82,9 @@ class RetrievalPipeline:
                 is_fallback=output.is_fallback,
             )
 
+        stale_threshold_days = self.settings_service.get_runtime_value("stale_threshold_days")
+        freshness_filter = self._build_freshness_filter(stale_threshold_days)
+
         active = self.index_metadata_store.get_active(kb_id)
         if not active:
             raise RuntimeError(f"No active index found for kb {kb_id}. Please rebuild index first.")
@@ -80,7 +105,7 @@ class RetrievalPipeline:
         vector_results: list[RetrievalResult] = []
         try:
             vector_results = vector_stage.execute(
-                VectorRetrievalInput(query=query, top_k=top_k),
+                VectorRetrievalInput(query=query, top_k=top_k, filter=freshness_filter),
                 model_name=runtime_embedding_model,
             ).results
         except Exception as exc:
@@ -102,16 +127,21 @@ class RetrievalPipeline:
         reranked = rerank_stage.execute(
             RerankingInput(query=query, candidates=fused, top_n=top_n)
         )
+
+        # 检索期时效过滤兜底：剔除 BM25 等路径可能引入的过期片段
+        cutoff_dt = datetime.utcnow() - timedelta(days=stale_threshold_days)
+        filtered_results = [r for r in reranked.reranked_results if self._is_fresh(r, cutoff_dt)]
+
         latency_ms = int((time.perf_counter() - start) * 1000)
 
         RETRIEVAL_LATENCY.labels(adapter=adapter, kb_id=kb_id, fallback=str(is_fallback), orchestration_mode=orchestration_mode).observe(latency_ms)
-        RECALL_COUNT.labels(adapter=adapter, kb_id=kb_id, fallback=str(is_fallback), orchestration_mode=orchestration_mode).observe(len(reranked.reranked_results))
-        if reranked.reranked_results:
+        RECALL_COUNT.labels(adapter=adapter, kb_id=kb_id, fallback=str(is_fallback), orchestration_mode=orchestration_mode).observe(len(filtered_results))
+        if filtered_results:
             RERANK_MAX_SCORE.labels(adapter=adapter, kb_id=kb_id, fallback=str(is_fallback), orchestration_mode=orchestration_mode).set(
-                max(r.score for r in reranked.reranked_results)
+                max(r.score for r in filtered_results)
             )
 
         return RetrievalPipelineOutput(
-            results=reranked.reranked_results,
+            results=filtered_results,
             is_fallback=is_fallback or reranked.is_fallback,
         )

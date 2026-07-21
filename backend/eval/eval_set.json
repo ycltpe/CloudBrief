@@ -88,5 +88,23 @@
     "should_refuse": true,
     "should_stale": false,
     "category": "out_of_scope"
+  },
+  {
+    "id": "eval-011",
+    "question": "2023 年旧版报表导出功能如何操作？",
+    "expected_answer_points": [],
+    "expected_chunk_ids": [],
+    "should_refuse": true,
+    "should_stale": true,
+    "category": "stale_intent"
+  },
+  {
+    "id": "eval-012",
+    "question": "去年（2025 年）的导出文件兼容性说明在哪里？",
+    "expected_answer_points": [],
+    "expected_chunk_ids": [],
+    "should_refuse": true,
+    "should_stale": true,
+    "category": "stale_intent"
   }
 ]

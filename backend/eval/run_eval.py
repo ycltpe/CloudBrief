@@ -225,7 +225,7 @@ async def main():
     )
     parser.add_argument(
         "--eval-set",
-        default="eval/eval_set_v2.json",
+        default="eval/eval_set.json",
         help="评测集路径（相对 backend/）",
     )
     args = parser.parse_args()

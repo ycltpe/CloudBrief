@@ -9,6 +9,7 @@ from app.stores.milvus import MilvusStore
 class VectorRetrievalInput(BaseModel):
     query: str
     top_k: int = 50
+    filter: str | None = None
 
 
 class VectorRetrievalOutput(BaseModel):
@@ -32,5 +33,9 @@ class VectorRetrievalStage(AbstractStage[VectorRetrievalInput, VectorRetrievalOu
         model_name: str | None = None,
     ) -> VectorRetrievalOutput:
         query_embedding = self.model_client.embed([input_data.query], model=model_name)[0]
-        results = self.milvus_store.search(query_embedding, top_k=input_data.top_k)
+        results = self.milvus_store.search(
+            query_embedding,
+            top_k=input_data.top_k,
+            filter=input_data.filter,
+        )
         return VectorRetrievalOutput(results=results)

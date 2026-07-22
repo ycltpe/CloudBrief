@@ -127,6 +127,8 @@ class IndexMetadata(Base):
     reason = Column(String(32), nullable=True)
     source_changes_json = Column(Text, default="[]")
     index_type = Column(String(32), nullable=True)
+    shadow_collection_name = Column(String(255), nullable=True)
+    shadow_index_type = Column(String(32), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

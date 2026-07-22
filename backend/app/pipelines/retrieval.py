@@ -1,3 +1,4 @@
+import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -80,6 +81,7 @@ class RetrievalPipeline:
         bm25_results: list[RetrievalResult],
         combined_filter: str | None,
         reranked,
+        shadow: dict | None = None,
     ) -> RetrievalCascadeMetadata:
         """根据各级 Stage 输出构造级联元数据。"""
         configured_provider = self.settings_service.get_runtime_value("reranker_provider")
@@ -96,7 +98,64 @@ class RetrievalPipeline:
             applied_filter=combined_filter,
             index_version=active.collection_name,
             index_type=index_type,
+            shadow=shadow,
         )
+
+    def _run_shadow_retrieval(
+        self,
+        *,
+        active,
+        query: str,
+        top_k: int,
+        combined_filter: str | None,
+        runtime_embedding_model: str,
+    ) -> dict | None:
+        """Shadow 路径：用 shadow collection 仅跑向量检索，失败不影响主路径。"""
+        shadow_collection_name = getattr(active, "shadow_collection_name", None)
+        shadow_index_type = getattr(active, "shadow_index_type", None)
+        if not shadow_collection_name or not shadow_index_type:
+            return None
+
+        import time
+
+        start = time.perf_counter()
+        try:
+            shadow_milvus = MilvusStore(
+                self.settings_service.get_runtime_value("milvus_uri"),
+                shadow_collection_name,
+                index_type=shadow_index_type,
+            )
+            shadow_vector_stage = VectorRetrievalStage(self.model_client, shadow_milvus)
+            shadow_vector_results = shadow_vector_stage.execute(
+                VectorRetrievalInput(query=query, top_k=top_k, filter=combined_filter),
+                model_name=runtime_embedding_model,
+            ).results
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            return {
+                "enabled": True,
+                "index_type": shadow_index_type,
+                "index_version": shadow_collection_name,
+                "vector_hits": len(shadow_vector_results),
+                "latency_ms": latency_ms,
+                "error": None,
+                "top5_chunk_ids": [r.chunk_id for r in shadow_vector_results[:5]],
+            }
+        except Exception as exc:
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            logger.warning(
+                "shadow_retrieval_failed",
+                shadow_collection=shadow_collection_name,
+                error=str(exc),
+            )
+            return {
+                "enabled": True,
+                "index_type": shadow_index_type,
+                "index_version": shadow_collection_name,
+                "vector_hits": 0,
+                "latency_ms": latency_ms,
+                "error": str(exc),
+                "top5_chunk_ids": [],
+            }
 
     def retrieve(
         self,
@@ -174,12 +233,25 @@ class RetrievalPipeline:
         cutoff_dt = datetime.utcnow() - timedelta(days=stale_threshold_days)
         filtered_results = [r for r in reranked.reranked_results if self._is_fresh(r, cutoff_dt)]
 
+        # Shadow 检索切流：按 shadow_ratio 决定是否执行对照路径
+        shadow_ratio = self.settings_service.get_runtime_value("shadow_ratio") or 0
+        shadow: dict | None = None
+        if shadow_ratio > 0 and random.uniform(0, 100) < shadow_ratio:
+            shadow = self._run_shadow_retrieval(
+                active=active,
+                query=query,
+                top_k=top_k,
+                combined_filter=combined_filter,
+                runtime_embedding_model=runtime_embedding_model,
+            )
+
         retrieval_metadata = self._build_retrieval_metadata(
             active=active,
             vector_results=vector_results,
             bm25_results=bm25_results,
             combined_filter=combined_filter,
             reranked=reranked,
+            shadow=shadow,
         )
 
         latency_ms = int((time.perf_counter() - start) * 1000)

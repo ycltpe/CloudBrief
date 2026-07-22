@@ -178,6 +178,21 @@ _register(SettingMeta(
     type="int", default=1536, min=1, requires_reindex=True,
 ))
 _register(SettingMeta(
+    key="vector_index_type", label="主向量索引类型", group="向量模型",
+    description="主索引使用的 Milvus 向量索引算法，修改后需重建索引生效",
+    type="choice", default="IVF_FLAT", options=["IVF_FLAT", "HNSW"], requires_reindex=True,
+))
+_register(SettingMeta(
+    key="shadow_index_type", label="Shadow 向量索引类型", group="向量模型",
+    description="Shadow 对照索引使用的 Milvus 向量索引算法，修改后需重建索引生效",
+    type="choice", default="HNSW", options=["IVF_FLAT", "HNSW"], requires_reindex=True,
+))
+_register(SettingMeta(
+    key="shadow_ratio", label="Shadow 检索切流比例（%）", group="向量模型",
+    description="按百分比把检索请求切流到 shadow 索引进行只检索不生成的对照实验",
+    type="int", default=0, min=0, max=100,
+))
+_register(SettingMeta(
     key="embedding_batch_size", label="Embedding 批大小", group="向量模型",
     description="单次 Embedding 请求的文本条数（DashScope text-embedding-v3 上限为 10）",
     type="int", default=10, min=1,

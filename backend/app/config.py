@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     local_reranker_url: str = "http://127.0.0.1:8000/v1"
     local_reranker_model: str = "Qwen/Qwen3-Reranker-0.6B"
 
+    # 向量索引算法对照：主索引 IVF_FLAT，shadow 索引 HNSW
+    vector_index_type: Literal["IVF_FLAT", "HNSW"] = "IVF_FLAT"
+    shadow_index_type: Literal["IVF_FLAT", "HNSW"] = "HNSW"
+    shadow_ratio: int = 0  # 0-100，shadow 检索切流百分比
+
     # 存储配置
     milvus_uri: str = "http://localhost:19531"
     milvus_collection: str = "cloudbrief_chunks"

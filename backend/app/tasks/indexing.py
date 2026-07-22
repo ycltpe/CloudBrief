@@ -235,9 +235,23 @@ def rebuild_index_task(self, kb_id: str = "default"):
         # 4-6. 写入 Milvus、重建 BM25、原子切换需在互斥锁内完成
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         collection_name = f"{settings_service.get_runtime_value('milvus_collection')}_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}"
+        shadow_collection_name = f"{settings_service.get_runtime_value('milvus_collection')}_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}_shadow"
         bm25_path = Path(settings_service.get_runtime_value("bm25_index_path")).parent / f"bm25_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}.pkl"
         metadata_store = IndexMetadataStore()
-        milvus_store = MilvusStore(settings_service.get_runtime_value("milvus_uri"), collection_name, dim=runtime_embedding_dim)
+        vector_index_type = settings_service.get_runtime_value("vector_index_type") or "IVF_FLAT"
+        shadow_index_type = settings_service.get_runtime_value("shadow_index_type") or "HNSW"
+        milvus_store = MilvusStore(
+            settings_service.get_runtime_value("milvus_uri"),
+            collection_name,
+            dim=runtime_embedding_dim,
+            index_type=vector_index_type,
+        )
+        shadow_milvus_store = MilvusStore(
+            settings_service.get_runtime_value("milvus_uri"),
+            shadow_collection_name,
+            dim=runtime_embedding_dim,
+            index_type=shadow_index_type,
+        )
         bm25_store = BM25Store(bm25_path)
 
         lock = redis_client.lock(
@@ -257,7 +271,42 @@ def rebuild_index_task(self, kb_id: str = "default"):
                     task_id,
                     "write_milvus",
                     _write_milvus,
-                    log_on_complete=lambda store: f"写入 Milvus 完成：{len(chunks)} 条向量写入 {store.collection_name}",
+                    log_on_complete=lambda store: f"写入 Milvus 完成：{len(chunks)} 条向量写入 {store.collection_name}({store.index_type})",
+                )
+
+                def _write_shadow_milvus():
+                    # Shadow 索引失败不阻塞主路径：捕获异常并继续
+                    try:
+                        shadow_milvus_store.create_collection()
+                        shadow_milvus_store.insert_chunks(chunks, vectors)
+                        return shadow_milvus_store
+                    except Exception as exc:
+                        logger.warning(
+                            "shadow_index_build_failed",
+                            task_id=task_id,
+                            kb_id=kb_id,
+                            shadow_collection=shadow_collection_name,
+                            error=str(exc),
+                        )
+                        _publish_step(
+                            redis_client,
+                            task_id,
+                            "write_shadow_milvus",
+                            "failed",
+                            log=f"Shadow 索引构建失败（不影响主路径）: {exc}",
+                        )
+                        return None
+
+                shadow_store = _run_step(
+                    redis_client,
+                    task_id,
+                    "write_shadow_milvus",
+                    _write_shadow_milvus,
+                    log_on_complete=lambda store: (
+                        f"Shadow 索引构建完成：{len(chunks)} 条向量写入 {store.collection_name}({store.index_type})"
+                        if store
+                        else "Shadow 索引已跳过或失败"
+                    ),
                 )
 
                 def _build_bm25():
@@ -279,7 +328,9 @@ def rebuild_index_task(self, kb_id: str = "default"):
                         bm25_index_path=str(bm25_path),
                         kb_id=kb_id,
                         reason="rebuild",
-                        index_type=getattr(milvus_store, "index_type", "IVF_FLAT"),
+                        index_type=getattr(milvus_store, "index_type", vector_index_type),
+                        shadow_collection_name=shadow_store.collection_name if shadow_store else None,
+                        shadow_index_type=getattr(shadow_store, "index_type", shadow_index_type) if shadow_store else None,
                     )
 
                 _run_step(
@@ -298,11 +349,12 @@ def rebuild_index_task(self, kb_id: str = "default"):
             task_id,
             "task",
             "completed",
-            log=f"索引切换完成：collection={collection_name}, bm25={bm25_path}",
+            log=f"索引切换完成：collection={collection_name}, shadow={shadow_collection_name if shadow_store else 'N/A'}, bm25={bm25_path}",
         )
         INDEX_TASK_TOTAL.labels(task_type="rebuild", kb_id=kb_id, status="completed").inc()
         return {
             "collection_name": collection_name,
+            "shadow_collection_name": shadow_collection_name if shadow_store else None,
             "bm25_index_path": str(bm25_path),
             "kb_id": kb_id,
         }
@@ -399,7 +451,10 @@ def index_file_task(self, file_id: int):
         metadata_store = IndexMetadataStore()
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         collection_name = f"{settings_service.get_runtime_value('milvus_collection')}_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}"
+        shadow_collection_name = f"{settings_service.get_runtime_value('milvus_collection')}_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}_shadow"
         bm25_path = Path(settings_service.get_runtime_value("bm25_index_path")).parent / f"bm25_kb_{kb_id}_{timestamp}_{uuid.uuid4().hex[:8]}.pkl"
+        vector_index_type = settings_service.get_runtime_value("vector_index_type") or "IVF_FLAT"
+        shadow_index_type = settings_service.get_runtime_value("shadow_index_type") or "HNSW"
 
         lock = redis_client.lock(
             f"index:active_switch_lock:{kb_id}",
@@ -409,34 +464,60 @@ def index_file_task(self, file_id: int):
         try:
             with lock:
                 active = metadata_store.get_active(kb_id)
-                existing: list[tuple[Chunk, list[float]]] = []
+                existing_primary: list[tuple[Chunk, list[float]]] = []
+                existing_shadow: list[tuple[Chunk, list[float]]] = []
                 if active:
                     milvus_store = MilvusStore(settings_service.get_runtime_value("milvus_uri"), active.collection_name)
-                    existing = _run_step(
+                    existing_primary = _run_step(
                         redis_client,
                         task_id,
                         "load_active",
                         milvus_store.get_all_chunks,
-                        log_on_complete=lambda items: f"加载现有索引：{len(items)} 条 chunk",
+                        log_on_complete=lambda items: f"加载现有主索引：{len(items)} 条 chunk",
                     )
                     # 维度一致性校验：活跃索引与当前 Embedding 模型输出维度不一致时无法直接合并
-                    if existing and new_vectors:
-                        active_dim = len(existing[0][1])
+                    if existing_primary and new_vectors:
+                        active_dim = len(existing_primary[0][1])
                         expected_dim = len(new_vectors[0])
                         if active_dim != expected_dim:
                             raise ValueError(
                                 f"活跃索引维度 ({active_dim}) 与当前 Embedding 模型输出维度 ({expected_dim}) 不一致，"
                                 f"请先执行一次全量重建索引"
                             )
+                    if active.shadow_collection_name:
+                        try:
+                            shadow_milvus_store = MilvusStore(
+                                settings_service.get_runtime_value("milvus_uri"), active.shadow_collection_name
+                            )
+                            existing_shadow = _run_step(
+                                redis_client,
+                                task_id,
+                                "load_active_shadow",
+                                shadow_milvus_store.get_all_chunks,
+                                log_on_complete=lambda items: f"加载现有 Shadow 索引：{len(items)} 条 chunk",
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "load_active_shadow_failed",
+                                task_id=task_id,
+                                kb_id=kb_id,
+                                shadow_collection=active.shadow_collection_name,
+                                error=str(exc),
+                            )
 
                 # 去重：替换同 source_id 的旧 chunk
-                filtered_existing = [
-                    (chunk, emb) for chunk, emb in existing if chunk.source_id not in new_source_ids
+                filtered_existing_primary = [
+                    (chunk, emb) for chunk, emb in existing_primary if chunk.source_id not in new_source_ids
                 ]
-                combined_chunks = [c for c, _ in filtered_existing] + new_chunks
-                combined_embeddings = [e for _, e in filtered_existing] + new_vectors
+                combined_chunks = [c for c, _ in filtered_existing_primary] + new_chunks
+                combined_embeddings = [e for _, e in filtered_existing_primary] + new_vectors
 
-                milvus_store = MilvusStore(settings_service.get_runtime_value("milvus_uri"), collection_name, dim=runtime_embedding_dim)
+                milvus_store = MilvusStore(
+                    settings_service.get_runtime_value("milvus_uri"),
+                    collection_name,
+                    dim=runtime_embedding_dim,
+                    index_type=vector_index_type,
+                )
 
                 def _write_milvus():
                     milvus_store.create_collection()
@@ -448,7 +529,55 @@ def index_file_task(self, file_id: int):
                     task_id,
                     "write_milvus",
                     _write_milvus,
-                    log_on_complete=lambda store: f"写入 Milvus 完成：{len(combined_chunks)} 条向量写入 {store.collection_name}",
+                    log_on_complete=lambda store: f"写入 Milvus 完成：{len(combined_chunks)} 条向量写入 {store.collection_name}({store.index_type})",
+                )
+
+                # Shadow 索引：复用主索引去重后的 chunks，失败不影响主路径
+                shadow_store = None
+                shadow_milvus_store = MilvusStore(
+                    settings_service.get_runtime_value("milvus_uri"),
+                    shadow_collection_name,
+                    dim=runtime_embedding_dim,
+                    index_type=shadow_index_type,
+                )
+                filtered_existing_shadow = [
+                    (chunk, emb) for chunk, emb in existing_shadow if chunk.source_id not in new_source_ids
+                ]
+                combined_shadow_chunks = [c for c, _ in filtered_existing_shadow] + new_chunks
+                combined_shadow_embeddings = [e for _, e in filtered_existing_shadow] + new_vectors
+
+                def _write_shadow_milvus():
+                    try:
+                        shadow_milvus_store.create_collection()
+                        shadow_milvus_store.insert_chunks(combined_shadow_chunks, combined_shadow_embeddings)
+                        return shadow_milvus_store
+                    except Exception as exc:
+                        logger.warning(
+                            "shadow_index_build_failed",
+                            task_id=task_id,
+                            kb_id=kb_id,
+                            shadow_collection=shadow_collection_name,
+                            error=str(exc),
+                        )
+                        _publish_step(
+                            redis_client,
+                            task_id,
+                            "write_shadow_milvus",
+                            "failed",
+                            log=f"Shadow 索引构建失败（不影响主路径）: {exc}",
+                        )
+                        return None
+
+                shadow_store = _run_step(
+                    redis_client,
+                    task_id,
+                    "write_shadow_milvus",
+                    _write_shadow_milvus,
+                    log_on_complete=lambda store: (
+                        f"Shadow 索引构建完成：{len(combined_shadow_chunks)} 条向量写入 {store.collection_name}({store.index_type})"
+                        if store
+                        else "Shadow 索引已跳过或失败"
+                    ),
                 )
 
                 bm25_store = BM25Store(bm25_path)
@@ -473,7 +602,9 @@ def index_file_task(self, file_id: int):
                         kb_id=kb_id,
                         reason="file_add",
                         source_changes_json=json.dumps(sorted(new_source_ids)),
-                        index_type=getattr(milvus_store, "index_type", "IVF_FLAT"),
+                        index_type=getattr(milvus_store, "index_type", vector_index_type),
+                        shadow_collection_name=shadow_store.collection_name if shadow_store else None,
+                        shadow_index_type=getattr(shadow_store, "index_type", shadow_index_type) if shadow_store else None,
                     )
 
                 _run_step(

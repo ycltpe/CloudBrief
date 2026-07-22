@@ -44,18 +44,45 @@ class MilvusFilterError(Exception):
 
 
 class MilvusStore:
-    """Milvus 向量存储封装，使用 MilvusClient 简化 API。"""
+    """Milvus 向量存储封装，使用 MilvusClient 简化 API。
 
-    INDEX_TYPE = "IVF_FLAT"
+    支持 IVF_FLAT / HNSW 两种索引算法，通过 index_type 参数切换。
+    """
 
-    def __init__(self, uri: str, collection_name: str, dim: int = 1536):
+    def __init__(
+        self,
+        uri: str,
+        collection_name: str,
+        dim: int = 1536,
+        index_type: str = "IVF_FLAT",
+        metric_type: str = "COSINE",
+    ):
         self.client = MilvusClient(uri=uri)
         self.collection_name = collection_name
         self.dim = dim
+        self.index_type = index_type
+        self.metric_type = metric_type
 
-    @property
-    def index_type(self) -> str:
-        return self.INDEX_TYPE
+    def _prepare_index_params(self):
+        """根据 index_type 生成对应索引参数。"""
+        index_params = self.client.prepare_index_params()
+        if self.index_type == "HNSW":
+            index_params.add_index(
+                field_name="embedding",
+                index_type="HNSW",
+                metric_type=self.metric_type,
+                params={"M": 16, "efConstruction": 200},
+            )
+        elif self.index_type == "IVF_FLAT":
+            index_params.add_index(
+                field_name="embedding",
+                index_type="IVF_FLAT",
+                metric_type=self.metric_type,
+                params={"nlist": 128},
+            )
+        else:
+            raise ValueError(f"不支持的 Milvus 索引类型: {self.index_type}")
+        return index_params
 
     def create_collection(self) -> None:
         if self.client.has_collection(collection_name=self.collection_name):
@@ -74,18 +101,10 @@ class MilvusStore:
         schema.add_field(field_name="content", datatype=DataType.VARCHAR, max_length=65535)
         schema.add_field(field_name="embedding", datatype=DataType.FLOAT_VECTOR, dim=self.dim)
 
-        index_params = self.client.prepare_index_params()
-        index_params.add_index(
-            field_name="embedding",
-            index_type="IVF_FLAT",
-            metric_type="COSINE",
-            params={"nlist": 128},
-        )
-
         self.client.create_collection(
             collection_name=self.collection_name,
             schema=schema,
-            index_params=index_params,
+            index_params=self._prepare_index_params(),
         )
 
     def insert_chunks(

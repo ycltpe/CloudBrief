@@ -161,6 +161,42 @@ class TestMilvusStoreInsert:
             store.insert_chunks([chunk, chunk], embeddings=[[0.1, 0.2, 0.3, 0.4]])
 
 
+class TestMilvusStoreIndexType:
+    """MilvusStore 索引算法参数测试。"""
+
+    def test_default_index_type_is_ivf_flat(self, mock_milvus_client):
+        store = MilvusStore(uri="http://localhost:19531", collection_name="test_collection", dim=4)
+        assert store.index_type == "IVF_FLAT"
+
+    def test_hnsw_index_creation_uses_hnsw_params(self, mock_milvus_client):
+        store = MilvusStore(
+            uri="http://localhost:19531",
+            collection_name="test_hnsw",
+            dim=4,
+            index_type="HNSW",
+            metric_type="COSINE",
+        )
+        store.create_collection()
+
+        mock_client = mock_milvus_client.return_value
+        index_params = mock_client.create_collection.call_args.kwargs["index_params"]
+        index_params.add_index.assert_called_once()
+        call_kwargs = index_params.add_index.call_args.kwargs
+        assert call_kwargs["index_type"] == "HNSW"
+        assert call_kwargs["metric_type"] == "COSINE"
+        assert call_kwargs["params"] == {"M": 16, "efConstruction": 200}
+
+    def test_unsupported_index_type_raises(self, mock_milvus_client):
+        store = MilvusStore(
+            uri="http://localhost:19531",
+            collection_name="test_unknown",
+            dim=4,
+            index_type="UNKNOWN",
+        )
+        with pytest.raises(ValueError, match="不支持的 Milvus 索引类型"):
+            store.create_collection()
+
+
 class TestMilvusFilterError:
     """MilvusFilterError 异常结构测试。"""
 

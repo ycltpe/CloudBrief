@@ -22,6 +22,7 @@ def pipeline():
             "embedding_model": "text-embedding-v3",
             "milvus_uri": "http://localhost:19531",
             "reranker_provider": "dashscope",
+            "shadow_ratio": 0,
         }.get(key)
     )
     return pipeline
@@ -270,3 +271,90 @@ class TestFilterCombination:
         assert input_data.filter.startswith('(updated_at >= "')
         assert 'source_type == "changelog"' in input_data.filter
         assert " AND " in input_data.filter
+
+
+class TestShadowRetrieval:
+    """Shadow 索引切流与对照落盘测试。"""
+
+    def test_shadow_retrieval_disabled_when_ratio_zero(self, pipeline, stage_mocks):
+        stage_mocks.set_vector_results([])
+        stage_mocks.set_bm25_results([])
+        stage_mocks.set_fusion_results([])
+        stage_mocks.set_rerank_results([])
+
+        output = pipeline.retrieve("query", top_k=10, top_n=3, kb_id="default")
+
+        assert output.retrieval_metadata is not None
+        assert output.retrieval_metadata.shadow is None
+
+    def test_shadow_retrieval_runs_when_ratio_hundred(self, pipeline, stage_mocks):
+        pipeline.settings_service.get_runtime_value = MagicMock(
+            side_effect=lambda key: {
+                "retrieval_adapter": "native",
+                "orchestration_mode": "native",
+                "stale_threshold_days": 90,
+                "embedding_model": "text-embedding-v3",
+                "milvus_uri": "http://localhost:19531",
+                "reranker_provider": "dashscope",
+                "shadow_ratio": 100,
+            }.get(key)
+        )
+        fresh = _make_result("fresh", datetime.utcnow() - timedelta(days=1), score=0.9)
+        stage_mocks.set_vector_results([fresh])
+        stage_mocks.set_bm25_results([])
+        stage_mocks.set_fusion_results([fresh])
+        stage_mocks.set_rerank_results([fresh])
+
+        with patch("app.pipelines.retrieval.MilvusStore") as mock_milvus_cls, \
+                patch.object(pipeline, "_run_shadow_retrieval", return_value={
+                    "enabled": True,
+                    "index_type": "HNSW",
+                    "index_version": "shadow_collection",
+                    "vector_hits": 1,
+                    "latency_ms": 12,
+                    "error": None,
+                    "top5_chunk_ids": ["fresh"],
+                }) as mock_shadow:
+            mock_milvus_cls.return_value.index_type = "IVF_FLAT"
+            output = pipeline.retrieve("query", top_k=10, top_n=3, kb_id="default")
+
+            mock_shadow.assert_called_once()
+
+            mock_shadow.assert_called_once()
+            assert output.retrieval_metadata.shadow is not None
+            assert output.retrieval_metadata.shadow["index_type"] == "HNSW"
+
+    def test_shadow_retrieval_failure_does_not_break_main(self, pipeline, stage_mocks):
+        pipeline.settings_service.get_runtime_value = MagicMock(
+            side_effect=lambda key: {
+                "retrieval_adapter": "native",
+                "orchestration_mode": "native",
+                "stale_threshold_days": 90,
+                "embedding_model": "text-embedding-v3",
+                "milvus_uri": "http://localhost:19531",
+                "reranker_provider": "dashscope",
+                "shadow_ratio": 100,
+            }.get(key)
+        )
+        fresh = _make_result("fresh", datetime.utcnow() - timedelta(days=1), score=0.9)
+        stage_mocks.set_vector_results([fresh])
+        stage_mocks.set_bm25_results([])
+        stage_mocks.set_fusion_results([fresh])
+        stage_mocks.set_rerank_results([fresh])
+
+        with patch("app.pipelines.retrieval.MilvusStore") as mock_milvus_cls, \
+                patch.object(pipeline, "_run_shadow_retrieval", return_value={
+                    "enabled": True,
+                    "index_type": "HNSW",
+                    "index_version": "shadow_collection",
+                    "vector_hits": 0,
+                    "latency_ms": 5,
+                    "error": "mock shadow error",
+                    "top5_chunk_ids": [],
+                }):
+            mock_milvus_cls.return_value.index_type = "IVF_FLAT"
+            output = pipeline.retrieve("query", top_k=10, top_n=3, kb_id="default")
+
+            assert len(output.results) == 1
+            assert output.retrieval_metadata.shadow is not None
+            assert output.retrieval_metadata.shadow["error"] == "mock shadow error"

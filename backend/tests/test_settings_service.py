@@ -79,6 +79,29 @@ def test_source_detection(empty_db_svc, monkeypatch):
     assert svc.get_source("refusal_threshold") == "db"
 
 
+def test_vector_index_type_default():
+    svc = SettingsService()
+    assert svc.get_runtime_value("vector_index_type") == "IVF_FLAT"
+    assert svc.get_runtime_value("shadow_index_type") == "HNSW"
+    assert svc.get_runtime_value("shadow_ratio") == 0
+
+
+def test_shadow_ratio_bounds():
+    svc = SettingsService()
+    assert svc.validate_and_coerce("shadow_ratio", 50) == "50"
+    with pytest.raises(ValueError, match="不能小于"):
+        svc.validate_and_coerce("shadow_ratio", -1)
+    with pytest.raises(ValueError, match="不能大于"):
+        svc.validate_and_coerce("shadow_ratio", 101)
+
+
+def test_vector_index_type_choice():
+    svc = SettingsService()
+    assert svc.validate_and_coerce("vector_index_type", "HNSW") == "HNSW"
+    with pytest.raises(ValueError, match="必须是"):
+        svc.validate_and_coerce("vector_index_type", "FLAT")
+
+
 def test_bool_runtime_default(empty_db_svc):
     assert empty_db_svc.get_runtime_value("auto_index_on_upload") is True
 

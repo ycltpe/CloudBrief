@@ -816,6 +816,9 @@ class ChatService:
                 "refusal_threshold": self.settings_service.get_runtime_value("refusal_threshold"),
                 "stale_threshold_days": self.settings_service.get_runtime_value("stale_threshold_days"),
                 "self_querying_enabled": self.settings_service.get_runtime_value("self_querying_enabled"),
+                "vector_index_type": self.settings_service.get_runtime_value("vector_index_type"),
+                "shadow_index_type": self.settings_service.get_runtime_value("shadow_index_type"),
+                "shadow_ratio": self.settings_service.get_runtime_value("shadow_ratio"),
             }
             self.query_log_store.insert(
                 user_id=user_id,

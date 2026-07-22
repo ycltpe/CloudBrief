@@ -67,10 +67,12 @@ class _FakeEmbeddingStage:
 
 
 class _FakeMilvusStore:
-    def __init__(self, existing=None):
+    def __init__(self, existing=None, index_type="IVF_FLAT", **kwargs):
         self.existing = existing or []
         self.inserted_chunks = None
         self.inserted_embeddings = None
+        self.index_type = index_type
+        self.collection_name = kwargs.get("collection_name", "fake_collection")
 
     def get_all_chunks(self):
         return self.existing
@@ -132,6 +134,8 @@ def patched_indexing_env(tmp_path, monkeypatch):
         "milvus_collection": settings.milvus_collection,
         "bm25_index_path": str(settings.bm25_index_path),
         "kb_storage_path": str(storage),
+        "vector_index_type": "IVF_FLAT",
+        "shadow_index_type": "HNSW",
     }
     settings_service.get_runtime_value.side_effect = lambda key: runtime_values.get(key)
 
@@ -234,6 +238,60 @@ def test_index_file_task_marks_failed_when_parse_raises(patched_indexing_env):
     assert last.args[1] == "failed"
 
 
+def test_index_file_task_builds_shadow_collection(patched_indexing_env):
+    existing_chunk = _make_chunk("existing_chunk", source_id="old_doc.md")
+    fake_primary = _FakeMilvusStore(existing=[(existing_chunk, [0.0, 0.0, 0.0])], index_type="IVF_FLAT")
+    fake_shadow = _FakeMilvusStore(existing=[(existing_chunk, [0.0, 0.0, 0.0])], index_type="HNSW")
+
+    def _make_store(uri, collection_name, dim=None, index_type="IVF_FLAT"):
+        if index_type == "HNSW":
+            fake_shadow.collection_name = collection_name
+            return fake_shadow
+        fake_primary.collection_name = collection_name
+        return fake_primary
+
+    patched_indexing_env["milvus_mock_cls"].side_effect = _make_store
+    patched_indexing_env["bm25_mock_cls"].side_effect = _FakeBM25Store
+
+    index_file_task.run(file_id=1)
+
+    assert fake_primary.inserted_chunks is not None
+    assert fake_shadow.inserted_chunks is not None
+    metadata_store = patched_indexing_env["metadata_store"]
+    switch_call = metadata_store.switch_active.call_args
+    assert switch_call.kwargs["index_type"] == "IVF_FLAT"
+    assert switch_call.kwargs["shadow_index_type"] == "HNSW"
+    assert switch_call.kwargs["shadow_collection_name"] is not None
+
+
+def test_index_file_task_shadow_failure_does_not_block_main(patched_indexing_env):
+    existing_chunk = _make_chunk("existing_chunk", source_id="old_doc.md")
+    fake_primary = _FakeMilvusStore(existing=[(existing_chunk, [0.0, 0.0, 0.0])], index_type="IVF_FLAT")
+
+    class _FailingShadowStore(_FakeMilvusStore):
+        def create_collection(self):
+            raise RuntimeError("shadow failed")
+
+    def _make_store(uri, collection_name, dim=None, index_type="IVF_FLAT"):
+        if index_type == "HNSW":
+            store = _FailingShadowStore(existing=[], index_type="HNSW")
+            store.collection_name = collection_name
+            return store
+        fake_primary.collection_name = collection_name
+        return fake_primary
+
+    patched_indexing_env["milvus_mock_cls"].side_effect = _make_store
+    patched_indexing_env["bm25_mock_cls"].side_effect = _FakeBM25Store
+
+    index_file_task.run(file_id=1)
+
+    metadata_store = patched_indexing_env["metadata_store"]
+    switch_call = metadata_store.switch_active.call_args
+    assert switch_call.kwargs["index_type"] == "IVF_FLAT"
+    # shadow 构建失败时，shadow_collection_name 应为 None
+    assert switch_call.kwargs["shadow_collection_name"] is None
+
+
 def test_rebuild_task_aborts_when_no_documents():
     """全灭重建（所有文件解析失败）必须中止，不得切换空索引上线。"""
     with (
@@ -247,7 +305,12 @@ def test_rebuild_task_aborts_when_no_documents():
         patch("app.tasks.indexing.MilvusStore") as milvus_cls,
         patch("app.tasks.indexing.IndexMetadataStore") as metadata_cls,
     ):
-        runtime_values = {"embedding_model": "model-x", "embedding_dim": 1024}
+        runtime_values = {
+            "embedding_model": "model-x",
+            "embedding_dim": 1024,
+            "vector_index_type": "IVF_FLAT",
+            "shadow_index_type": "HNSW",
+        }
         settings_service_cls.return_value.get_runtime_value.side_effect = (
             lambda key: runtime_values.get(key)
         )

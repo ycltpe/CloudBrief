@@ -54,6 +54,7 @@ class RetrievalCascadeMetadata:
     applied_filter: str | None
     index_version: str
     index_type: str | None
+    shadow: dict | None = None  # shadow 索引对照结果
 
 
 InputT = TypeVar("InputT", bound=BaseModel)

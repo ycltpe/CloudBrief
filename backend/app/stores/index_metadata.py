@@ -44,6 +44,8 @@ class IndexMetadataStore:
         reason: str = "rebuild",
         source_changes_json: str = "[]",
         index_type: str | None = "IVF_FLAT",
+        shadow_collection_name: str | None = None,
+        shadow_index_type: str | None = None,
     ) -> int:
         """原子切换：把新记录置为 active，旧记录置为 inactive，返回新记录 id。"""
         with self._session_factory() as session:
@@ -63,6 +65,8 @@ class IndexMetadataStore:
                 reason=reason,
                 source_changes_json=source_changes_json,
                 index_type=index_type,
+                shadow_collection_name=shadow_collection_name,
+                shadow_index_type=shadow_index_type,
             )
             session.add(new_meta)
             session.commit()
